@@ -228,7 +228,13 @@ export default function Chat() {
     }
 
     const userMessage = input.trim();
+    const currentAttachments = attachments.map(a => ({
+      type: "image" as const,
+      mimeType: a.mimeType,
+      url: a.url
+    }));
     setInput("");
+    setAttachments([]);
     setIsLoading(true);
     setStreamingContent("");
     setStreamingReasoning([]);
@@ -239,7 +245,7 @@ export default function Chat() {
       conversationId: conversationId,
       role: "user",
       content: userMessage,
-      metadata: null,
+      metadata: currentAttachments.length > 0 ? { attachments: currentAttachments } : null,
       timestamp: new Date()
     };
     setMessages(prev => [...prev, tempUserMessage]);
@@ -248,7 +254,7 @@ export default function Chat() {
     const collectedSteps: ReasoningStep[] = [];
 
     try {
-      for await (const event of sendChatMessage(conversationId, userMessage, providers)) {
+      for await (const event of sendChatMessage(conversationId, userMessage, providers, currentAttachments)) {
         if (event.type === "content") {
           fullResponse += event.content;
           setStreamingContent(fullResponse);

@@ -1,4 +1,4 @@
-import { callOpenAI, callAnthropic, streamOpenAI, streamAnthropic, type ProviderConfig, type ReasoningStep, type TokenUsage } from "./providers";
+import { callOpenAI, callAnthropic, streamOpenAI, streamAnthropic, type ProviderConfig, type ReasoningStep, type TokenUsage, type MessageContent } from "./providers";
 
 export class PoetiqOrchestrator {
   private providers: ProviderConfig[];
@@ -8,7 +8,7 @@ export class PoetiqOrchestrator {
   }
 
   async* solveTask(
-    userPrompt: string,
+    userPrompt: string | MessageContent[],
     onReasoningStep?: (step: ReasoningStep) => void,
     onTokenUsage?: (usage: TokenUsage) => void
   ): AsyncGenerator<string> {
@@ -30,13 +30,12 @@ Your approach:
 
 Focus on clarity, logical progression, and actionable insights.`;
 
+    const messages: MessageContent[] = Array.isArray(userPrompt) 
+      ? [{ role: "system", content: systemPrompt }, ...userPrompt]
+      : [{ role: "system", content: systemPrompt }, { role: "user", content: userPrompt }];
+
     if (enabledProviders.length === 1) {
       const provider = enabledProviders[0];
-      
-      const messages = [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: userPrompt }
-      ];
 
       let stepUsage: { inputTokens: number; outputTokens: number } = { inputTokens: 0, outputTokens: 0 };
       const handleUsage = (usage: { inputTokens: number; outputTokens: number }) => {
@@ -72,11 +71,6 @@ Focus on clarity, logical progression, and actionable insights.`;
       const primaryProvider = enabledProviders[0];
       const secondaryProvider = enabledProviders[1];
 
-      const messages = [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: userPrompt }
-      ];
-
       let initialResponse = "";
       let primaryUsage = { inputTokens: 0, outputTokens: 0 };
       let accumulatedUsage = { inputTokens: 0, outputTokens: 0 };
@@ -103,9 +97,8 @@ Focus on clarity, logical progression, and actionable insights.`;
         tokenUsage: primaryUsage,
       });
 
-      const refineMessages = [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: userPrompt },
+      const refineMessages: MessageContent[] = [
+        ...messages,
         { role: "assistant", content: initialResponse },
         { 
           role: "user", 

@@ -122,15 +122,22 @@ export async function updateSettings(providers: any): Promise<Settings> {
   return response.json();
 }
 
+export interface AttachmentRef {
+  type: "image";
+  mimeType: string;
+  url: string;
+}
+
 export async function* sendChatMessage(
   conversationId: string,
   message: string,
-  providers: ProviderConfig[]
+  providers: ProviderConfig[],
+  attachments?: AttachmentRef[]
 ): AsyncGenerator<StreamEvent> {
   const response = await fetch(`/api/conversations/${conversationId}/chat`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ message, providers }),
+    body: JSON.stringify({ message, providers, attachments }),
   });
 
   if (!response.ok) throw new Error("Failed to send message");

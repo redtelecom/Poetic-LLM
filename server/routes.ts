@@ -210,7 +210,7 @@ export async function registerRoutes(
     const SUMMARY_TRIGGER_COUNT = 6;
     
     try {
-      const { message, providers } = req.body;
+      const { message, providers, attachments } = req.body;
       
       if (!message || !providers) {
         return res.status(400).json({ error: "Message and providers required" });
@@ -224,7 +224,7 @@ export async function registerRoutes(
         conversationId: req.params.id,
         role: "user",
         content: message,
-        metadata: null,
+        metadata: attachments && attachments.length > 0 ? { attachments } : null,
       });
 
       const existingMessages = await storage.getMessages(req.params.id);
@@ -232,7 +232,7 @@ export async function registerRoutes(
       
       const recentMessages = existingMessages.slice(-SLIDING_WINDOW_SIZE);
       
-      const conversationHistory: Array<{ role: "user" | "assistant" | "system"; content: string }> = [];
+      const conversationHistory: Array<{ role: "user" | "assistant" | "system"; content: string; images?: Array<{ type: "image"; mimeType: string; url: string }> }> = [];
       
       if (existingSummary) {
         conversationHistory.push({
@@ -242,10 +242,19 @@ export async function registerRoutes(
       }
       
       for (const m of recentMessages) {
+        const messageImages = m.metadata?.attachments?.filter((a: any) => a.type === "image");
         conversationHistory.push({
           role: m.role as "user" | "assistant",
-          content: m.content
+          content: m.content,
+          ...(messageImages && messageImages.length > 0 ? { images: messageImages } : {})
         });
+      }
+
+      if (attachments && attachments.length > 0) {
+        const lastMessage = conversationHistory[conversationHistory.length - 1];
+        if (lastMessage && lastMessage.role === "user") {
+          lastMessage.images = attachments.filter((a: any) => a.type === "image");
+        }
       }
 
       const orchestrator = new PoetiqOrchestrator(providers as ProviderConfig[]);
@@ -254,12 +263,8 @@ export async function registerRoutes(
       const pendingSteps: Array<{ provider: string; model: string; action: string; content: string; stepNumber: number; tokenUsage?: { inputTokens: number; outputTokens: number } }> = [];
       let tokenUsage: TokenUsage = { inputTokens: 0, outputTokens: 0 };
 
-      const contextPrompt = conversationHistory.length > 1 
-        ? `Based on this conversation:\n${conversationHistory.map(m => `${m.role}: ${m.content}`).join('\n')}\n\nRespond to the latest message.`
-        : message;
-
       for await (const chunk of orchestrator.solveTask(
-        contextPrompt,
+        conversationHistory.length > 0 ? conversationHistory : message,
         (step) => {
           stepNumber++;
           const stepData = { ...step, stepNumber };

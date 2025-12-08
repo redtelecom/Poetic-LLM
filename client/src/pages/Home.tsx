@@ -104,6 +104,9 @@ export default function Home() {
         </div>
         
         <div className="flex items-center gap-4">
+           <Button variant="ghost" size="sm" asChild>
+             <a href="/general">Switch to General Solver</a>
+           </Button>
            <div className="text-sm text-neutral-500">
              Task: <span className="font-mono text-neutral-900 font-medium">{task.id}</span>
            </div>

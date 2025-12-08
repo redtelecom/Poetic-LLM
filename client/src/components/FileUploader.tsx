@@ -1,8 +1,8 @@
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { X, ImagePlus, Loader2 } from "lucide-react";
 
-interface FileAttachment {
+export interface FileAttachment {
   id: string;
   file: File;
   preview: string;
@@ -11,6 +11,7 @@ interface FileAttachment {
   uploaded: boolean;
   storageKey?: string;
   url?: string;
+  mimeType: string;
 }
 
 interface FileUploaderProps {
@@ -26,9 +27,23 @@ export function FileUploader({ attachments, setAttachments, disabled }: FileUplo
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isDragging, setIsDragging] = useState(false);
 
-  const addFiles = useCallback(async (files: FileList | File[]) => {
-    const newAttachments: FileAttachment[] = [];
+  const uploadFile = async (file: File): Promise<{ storageKey: string; url: string }> => {
+    const formData = new FormData();
+    formData.append("file", file);
     
+    const response = await fetch("/api/objects/upload", {
+      method: "POST",
+      body: formData
+    });
+    
+    if (!response.ok) {
+      throw new Error("Upload failed");
+    }
+    
+    return response.json();
+  };
+
+  const addFiles = useCallback(async (files: FileList | File[]) => {
     for (const file of Array.from(files)) {
       if (file.size > MAX_FILE_SIZE) {
         console.warn(`File ${file.name} is too large (max 10MB)`);
@@ -36,24 +51,36 @@ export function FileUploader({ attachments, setAttachments, disabled }: FileUplo
       }
 
       const isImage = ALLOWED_IMAGE_TYPES.includes(file.type);
-      const id = crypto.randomUUID();
+      if (!isImage) continue;
       
-      let preview = "";
-      if (isImage) {
-        preview = URL.createObjectURL(file);
-      }
+      const id = crypto.randomUUID();
+      const preview = URL.createObjectURL(file);
 
-      newAttachments.push({
+      const newAttachment: FileAttachment = {
         id,
         file,
         preview,
-        type: isImage ? "image" : "file",
-        uploading: false,
+        type: "image",
+        uploading: true,
         uploaded: false,
-      });
-    }
+        mimeType: file.type
+      };
 
-    setAttachments(prev => [...prev, ...newAttachments]);
+      setAttachments(prev => [...prev, newAttachment]);
+
+      try {
+        const result = await uploadFile(file);
+        setAttachments(prev => prev.map(a => 
+          a.id === id 
+            ? { ...a, uploading: false, uploaded: true, storageKey: result.storageKey, url: result.url }
+            : a
+        ));
+      } catch (error) {
+        console.error("Upload failed:", error);
+        setAttachments(prev => prev.filter(a => a.id !== id));
+        URL.revokeObjectURL(preview);
+      }
+    }
   }, [setAttachments]);
 
   const removeAttachment = useCallback((id: string) => {
@@ -101,9 +128,18 @@ export function FileUploader({ attachments, setAttachments, disabled }: FileUplo
     }
 
     if (files.length > 0) {
+      e.preventDefault();
       addFiles(files);
     }
   }, [addFiles]);
+
+  useEffect(() => {
+    if (disabled) return;
+    document.addEventListener("paste", handlePaste);
+    return () => {
+      document.removeEventListener("paste", handlePaste);
+    };
+  }, [handlePaste, disabled]);
 
   const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
@@ -197,5 +233,3 @@ export function FileUploader({ attachments, setAttachments, disabled }: FileUplo
     </div>
   );
 }
-
-export type { FileAttachment };

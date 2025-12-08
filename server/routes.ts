@@ -203,8 +203,25 @@ export async function registerRoutes(
 
       const orchestrator = new PoetiqOrchestrator(providers as ProviderConfig[]);
       let fullResponse = "";
+      let stepNumber = 0;
+      const pendingSteps: Array<{ provider: string; model: string; action: string; content: string; stepNumber: number }> = [];
 
-      for await (const chunk of orchestrator.chat(conversationHistory)) {
+      const contextPrompt = conversationHistory.length > 1 
+        ? `Based on this conversation:\n${conversationHistory.map(m => `${m.role}: ${m.content}`).join('\n')}\n\nRespond to the latest message.`
+        : message;
+
+      for await (const chunk of orchestrator.solveTask(
+        contextPrompt,
+        (step) => {
+          stepNumber++;
+          const stepData = { ...step, stepNumber };
+          pendingSteps.push(stepData);
+          res.write(`data: ${JSON.stringify({ 
+            type: "reasoning_step", 
+            step: stepData 
+          })}\n\n`);
+        }
+      )) {
         fullResponse += chunk;
         res.write(`data: ${JSON.stringify({ type: "content", content: chunk })}\n\n`);
       }
@@ -215,6 +232,17 @@ export async function registerRoutes(
         content: fullResponse,
         metadata: { providers: providers.filter((p: ProviderConfig) => p.enabled).map((p: ProviderConfig) => p.id) },
       });
+
+      for (const step of pendingSteps) {
+        await storage.createReasoningStep({
+          messageId: assistantMessage.id,
+          stepNumber: step.stepNumber,
+          provider: step.provider,
+          model: step.model,
+          action: step.action,
+          content: step.content,
+        });
+      }
 
       const allMessages = await storage.getMessages(req.params.id);
       

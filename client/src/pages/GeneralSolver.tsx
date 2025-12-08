@@ -27,6 +27,7 @@ import {
   deleteConversation,
   solveTask,
   fetchSettings,
+  fetchReasoningSteps,
   type ProviderConfig 
 } from "@/lib/api";
 import type { Conversation, Message } from "@shared/schema";
@@ -90,8 +91,25 @@ export default function GeneralSolver() {
       
       if (lastAssistantMessage) {
         setResult(lastAssistantMessage.content);
+        
+        try {
+          const steps = await fetchReasoningSteps(lastAssistantMessage.id);
+          const formattedSteps: ReasoningStep[] = steps.map((s: any) => ({
+            id: s.stepNumber,
+            provider: s.provider,
+            model: s.model,
+            action: s.action,
+            content: s.content,
+            status: "completed" as const
+          }));
+          setReasoningSteps(formattedSteps);
+        } catch (err) {
+          console.error("Failed to load reasoning steps:", err);
+          setReasoningSteps([]);
+        }
       } else {
         setResult(null);
+        setReasoningSteps([]);
       }
     } catch (error) {
       console.error("Failed to load conversation:", error);
@@ -139,7 +157,6 @@ export default function GeneralSolver() {
     setActiveConversationId(id);
     loadConversation(id);
     setActiveTab("solver");
-    setReasoningSteps([]);
   };
 
   const handleDeleteConversation = async (id: string) => {

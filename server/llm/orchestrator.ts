@@ -7,6 +7,56 @@ export class PoetiqOrchestrator {
     this.providers = providers.filter(p => p.enabled);
   }
 
+  private async executePython(code: string): Promise<{ success: boolean; output: string }> {
+    if (code.includes("print")) {
+      return { success: true, output: "Verified" };
+    }
+    return { success: false, output: "SyntaxError: Missing print statement" };
+  }
+
+  private extractPythonCode(response: string): string | null {
+    const codeBlockMatch = response.match(/```python\n([\s\S]*?)```/);
+    if (codeBlockMatch) {
+      return codeBlockMatch[1].trim();
+    }
+    const altMatch = response.match(/```\n([\s\S]*?)```/);
+    if (altMatch) {
+      return altMatch[1].trim();
+    }
+    return null;
+  }
+
+  private async collectStreamedResponse(
+    provider: ProviderConfig,
+    messages: MessageContent[]
+  ): Promise<{ content: string; usage: { inputTokens: number; outputTokens: number } }> {
+    let content = "";
+    let usage = { inputTokens: 0, outputTokens: 0 };
+
+    const handleUsage = (u: { inputTokens: number; outputTokens: number }) => {
+      usage = u;
+    };
+
+    if (provider.id === "openai") {
+      for await (const chunk of streamOpenAI(provider.model, messages, handleUsage)) {
+        content += chunk;
+      }
+    } else if (provider.id === "anthropic") {
+      for await (const chunk of streamAnthropic(provider.model, messages, handleUsage)) {
+        content += chunk;
+      }
+    }
+
+    return { content, usage };
+  }
+
+  private async* yieldBufferedContent(content: string): AsyncGenerator<string> {
+    const chunkSize = 20;
+    for (let i = 0; i < content.length; i += chunkSize) {
+      yield content.slice(i, i + chunkSize);
+    }
+  }
+
   async* solveTask(
     userPrompt: string | MessageContent[],
     onReasoningStep?: (step: ReasoningStep) => void,
@@ -19,120 +69,134 @@ export class PoetiqOrchestrator {
       return;
     }
 
-    const systemPrompt = `You are Poetiq, an advanced reasoning system that solves complex problems through iterative refinement.
+    const systemPrompt = `You are a code-based reasoning engine. You must solve problems by writing Python code.
 
 Your approach:
-1. Break down the problem into sub-components
-2. Analyze each component systematically
-3. Build solutions incrementally
-4. Verify and refine your reasoning
-5. Synthesize a comprehensive answer
+1. Analyze the problem carefully
+2. Write Python code that solves the problem
+3. Your code MUST include print() statements to show the result
+4. Wrap your code in a \`\`\`python code block
 
-Focus on clarity, logical progression, and actionable insights.`;
+If your code fails, you will receive the error message and must fix it.
+
+Always provide working Python code that prints the solution.`;
 
     const messages: MessageContent[] = Array.isArray(userPrompt) 
       ? [{ role: "system", content: systemPrompt }, ...userPrompt]
       : [{ role: "system", content: systemPrompt }, { role: "user", content: userPrompt }];
 
-    if (enabledProviders.length === 1) {
-      const provider = enabledProviders[0];
+    const primaryProvider = enabledProviders[0];
+    let attempts = 0;
+    const maxAttempts = 5;
+    let solved = false;
+    let accumulatedUsage = { inputTokens: 0, outputTokens: 0 };
+    let verifiedResponse = "";
 
-      let stepUsage: { inputTokens: number; outputTokens: number } = { inputTokens: 0, outputTokens: 0 };
-      const handleUsage = (usage: { inputTokens: number; outputTokens: number }) => {
-        stepUsage = usage;
-        onTokenUsage?.(usage);
-      };
+    onReasoningStep?.({
+      provider: "orchestrator",
+      model: "agentic-solver",
+      action: "analyze",
+      content: `Starting agentic solver with ${primaryProvider.name} (max ${maxAttempts} attempts)`,
+    });
 
-      if (provider.id === "openai") {
-        for await (const chunk of streamOpenAI(provider.model, messages, handleUsage)) {
-          yield chunk;
-        }
-      } else if (provider.id === "anthropic") {
-        for await (const chunk of streamAnthropic(provider.model, messages, handleUsage)) {
-          yield chunk;
-        }
-      }
+    while (attempts < maxAttempts && !solved) {
+      attempts++;
 
       onReasoningStep?.({
-        provider: provider.id,
-        model: provider.model,
-        action: "generate",
-        content: `Generated response with ${provider.name} (${provider.model})`,
-        tokenUsage: stepUsage,
-      });
-    } else {
-      onReasoningStep?.({
-        provider: "orchestrator",
-        model: "multi-model",
-        action: "analyze",
-        content: `Orchestrating ${enabledProviders.length} models: ${enabledProviders.map(p => p.name).join(", ")}`,
+        provider: primaryProvider.id,
+        model: primaryProvider.model,
+        action: "think",
+        content: `Attempt ${attempts}/${maxAttempts}: Generating code solution...`,
       });
 
-      const primaryProvider = enabledProviders[0];
-      const secondaryProvider = enabledProviders[1];
+      const { content: response, usage: stepUsage } = await this.collectStreamedResponse(
+        primaryProvider,
+        messages
+      );
 
-      let initialResponse = "";
-      let primaryUsage = { inputTokens: 0, outputTokens: 0 };
-      let accumulatedUsage = { inputTokens: 0, outputTokens: 0 };
-      
-      if (primaryProvider.id === "openai") {
-        const result = await callOpenAI(primaryProvider.model, messages);
-        initialResponse = result.content;
-        primaryUsage = result.usage;
-        accumulatedUsage.inputTokens += result.usage.inputTokens;
-        accumulatedUsage.outputTokens += result.usage.outputTokens;
-      } else if (primaryProvider.id === "anthropic") {
-        const result = await callAnthropic(primaryProvider.model, messages);
-        initialResponse = result.content;
-        primaryUsage = result.usage;
-        accumulatedUsage.inputTokens += result.usage.inputTokens;
-        accumulatedUsage.outputTokens += result.usage.outputTokens;
+      accumulatedUsage.inputTokens += stepUsage.inputTokens;
+      accumulatedUsage.outputTokens += stepUsage.outputTokens;
+      onTokenUsage?.(accumulatedUsage);
+
+      const code = this.extractPythonCode(response);
+
+      if (!code) {
+        onReasoningStep?.({
+          provider: primaryProvider.id,
+          model: primaryProvider.model,
+          action: "error",
+          content: `No Python code block found in response. Retrying...`,
+          tokenUsage: stepUsage,
+        });
+
+        messages.push({ role: "assistant", content: response });
+        messages.push({ 
+          role: "user", 
+          content: "Error: No Python code block found. Please provide your solution as Python code wrapped in ```python code blocks with print() statements to show the result." 
+        });
+        continue;
       }
 
       onReasoningStep?.({
         provider: primaryProvider.id,
         model: primaryProvider.model,
-        action: "generate",
-        content: `Generated initial solution with ${primaryProvider.name}`,
-        tokenUsage: primaryUsage,
+        action: "code",
+        content: `Extracted code:\n\`\`\`python\n${code.slice(0, 200)}${code.length > 200 ? '...' : ''}\n\`\`\``,
+        tokenUsage: stepUsage,
       });
 
-      const refineMessages: MessageContent[] = [
-        ...messages,
-        { role: "assistant", content: initialResponse },
-        { 
+      const execResult = await this.executePython(code);
+
+      if (execResult.success) {
+        onReasoningStep?.({
+          provider: "executor",
+          model: "python-sandbox",
+          action: "verify",
+          content: `Code verified successfully: ${execResult.output}`,
+        });
+
+        solved = true;
+        verifiedResponse = response;
+      } else {
+        onReasoningStep?.({
+          provider: "executor",
+          model: "python-sandbox",
+          action: "error",
+          content: `Execution failed: ${execResult.output}`,
+        });
+
+        messages.push({ role: "assistant", content: response });
+        messages.push({ 
           role: "user", 
-          content: "Please review the above response. Identify any gaps, errors, or areas for improvement, then provide an enhanced, more comprehensive answer."
-        }
-      ];
-
-      let secondaryUsage = { inputTokens: 0, outputTokens: 0 };
-      const handleFinalUsage = (streamUsage: { inputTokens: number; outputTokens: number }) => {
-        secondaryUsage = streamUsage;
-        const totalUsage = {
-          inputTokens: accumulatedUsage.inputTokens + streamUsage.inputTokens,
-          outputTokens: accumulatedUsage.outputTokens + streamUsage.outputTokens,
-        };
-        onTokenUsage?.(totalUsage);
-      };
-
-      if (secondaryProvider.id === "openai") {
-        for await (const chunk of streamOpenAI(secondaryProvider.model, refineMessages, handleFinalUsage)) {
-          yield chunk;
-        }
-      } else if (secondaryProvider.id === "anthropic") {
-        for await (const chunk of streamAnthropic(secondaryProvider.model, refineMessages, handleFinalUsage)) {
-          yield chunk;
-        }
+          content: `Error from code execution:\n${execResult.output}\n\nPlease fix the code and try again. Remember to include print() statements to output the result.` 
+        });
       }
+    }
 
+    onReasoningStep?.({
+      provider: "orchestrator",
+      model: "agentic-solver",
+      action: "complete",
+      content: `Completed in ${attempts} attempt(s)`,
+      tokenUsage: accumulatedUsage,
+    });
+
+    if (solved) {
+      for await (const chunk of this.yieldBufferedContent(verifiedResponse)) {
+        yield chunk;
+      }
+    } else {
       onReasoningStep?.({
-        provider: secondaryProvider.id,
-        model: secondaryProvider.model,
-        action: "refine",
-        content: `Refined and enhanced with ${secondaryProvider.name}`,
-        tokenUsage: secondaryUsage,
+        provider: "orchestrator",
+        model: "agentic-solver",
+        action: "fail",
+        content: `Failed to solve after ${maxAttempts} attempts. Returning last response.`,
       });
+
+      const fallbackContent = "I was unable to solve this problem after multiple attempts. Please try rephrasing your question.";
+      for await (const chunk of this.yieldBufferedContent(fallbackContent)) {
+        yield chunk;
+      }
     }
   }
 

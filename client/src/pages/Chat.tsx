@@ -35,6 +35,7 @@ import {
   fetchReasoningSteps,
   type ProviderConfig 
 } from "@/lib/api";
+import { FileUploader, type FileAttachment } from "@/components/FileUploader";
 
 interface ReasoningStep {
   id: number;
@@ -68,6 +69,7 @@ export default function Chat() {
   const [tokenUsage, setTokenUsage] = useState<{ inputTokens: number; outputTokens: number } | null>(null);
   const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
   const [computeBudget, setComputeBudget] = useState([50]);
+  const [attachments, setAttachments] = useState<FileAttachment[]>([]);
 
   const copyToClipboard = async (content: string, messageId: string) => {
     try {
@@ -552,7 +554,12 @@ export default function Chat() {
                   />
                   <span className="text-sm font-medium text-indigo-600 w-10" data-testid="text-compute-budget">{computeBudget}%</span>
                 </div>
-                <div className="flex gap-3">
+                <FileUploader 
+                  attachments={attachments} 
+                  setAttachments={setAttachments}
+                  disabled={isLoading}
+                />
+                <div className="flex gap-3 mt-2">
                   <Textarea
                     ref={textareaRef}
                     placeholder="Type your message..."

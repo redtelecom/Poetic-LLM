@@ -9,11 +9,14 @@ import {
   type InsertSettings,
   type ConversationSummary,
   type InsertConversationSummary,
+  type Attachment,
+  type InsertAttachment,
   conversations,
   messages,
   reasoningSteps,
   settings,
   conversationSummaries,
+  attachments,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc } from "drizzle-orm";
@@ -36,6 +39,10 @@ export interface IStorage {
   
   getConversationSummary(conversationId: string): Promise<ConversationSummary | undefined>;
   upsertConversationSummary(data: InsertConversationSummary): Promise<ConversationSummary>;
+  
+  createAttachment(attachment: InsertAttachment): Promise<Attachment>;
+  getAttachmentsByMessage(messageId: string): Promise<Attachment[]>;
+  updateAttachmentMessage(attachmentId: string, messageId: string): Promise<Attachment | undefined>;
 }
 
 export class PostgresStorage implements IStorage {
@@ -130,6 +137,25 @@ export class PostgresStorage implements IStorage {
       const result = await db.insert(conversationSummaries).values(data).returning();
       return result[0];
     }
+  }
+
+  async createAttachment(attachment: InsertAttachment): Promise<Attachment> {
+    const result = await db.insert(attachments).values(attachment).returning();
+    return result[0];
+  }
+
+  async getAttachmentsByMessage(messageId: string): Promise<Attachment[]> {
+    const result = await db.select().from(attachments)
+      .where(eq(attachments.messageId, messageId));
+    return result;
+  }
+
+  async updateAttachmentMessage(attachmentId: string, messageId: string): Promise<Attachment | undefined> {
+    const result = await db.update(attachments)
+      .set({ messageId })
+      .where(eq(attachments.id, attachmentId))
+      .returning();
+    return result[0];
   }
 }
 

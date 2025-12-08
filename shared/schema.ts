@@ -46,6 +46,18 @@ export const conversationSummaries = pgTable("conversation_summaries", {
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
+export const attachments = pgTable("attachments", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  messageId: varchar("message_id").references(() => messages.id, { onDelete: "cascade" }),
+  type: varchar("type", { length: 50 }).notNull(),
+  mimeType: varchar("mime_type", { length: 100 }).notNull(),
+  fileName: text("file_name"),
+  size: integer("size"),
+  storageKey: text("storage_key").notNull(),
+  url: text("url"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
 export const insertConversationSchema = createInsertSchema(conversations).omit({
   id: true,
   createdAt: true,
@@ -72,6 +84,11 @@ export const insertConversationSummarySchema = createInsertSchema(conversationSu
   updatedAt: true,
 });
 
+export const insertAttachmentSchema = createInsertSchema(attachments).omit({
+  id: true,
+  createdAt: true,
+});
+
 export type InsertConversation = z.infer<typeof insertConversationSchema>;
 export type Conversation = typeof conversations.$inferSelect;
 
@@ -86,3 +103,6 @@ export type Settings = typeof settings.$inferSelect;
 
 export type InsertConversationSummary = z.infer<typeof insertConversationSummarySchema>;
 export type ConversationSummary = typeof conversationSummaries.$inferSelect;
+
+export type InsertAttachment = z.infer<typeof insertAttachmentSchema>;
+export type Attachment = typeof attachments.$inferSelect;

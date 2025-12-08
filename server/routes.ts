@@ -4,6 +4,7 @@ import { storage } from "./storage";
 import { insertConversationSchema, insertMessageSchema, insertSettingsSchema } from "@shared/schema";
 import { PoetiqOrchestrator } from "./llm/orchestrator";
 import type { ProviderConfig, TokenUsage } from "./llm/providers";
+import { ObjectStorageService, ObjectNotFoundError } from "./objectStorage";
 
 function parsePoetiqResponse(fullResponse: string): { review: string | null; enhancedResponse: string } {
   const reviewMatch = fullResponse.match(/##\s*Review of Previous Response\s*([\s\S]*?)(?=##\s*Enhanced Response|$)/i);
@@ -365,6 +366,65 @@ Provide a concise summary (2-3 paragraphs max):`;
       console.error("Error in chat:", error);
       res.write(`data: ${JSON.stringify({ type: "error", error: "Failed to process request" })}\n\n`);
       res.end();
+    }
+  });
+
+  app.post("/api/objects/upload", async (req, res) => {
+    try {
+      const objectStorageService = new ObjectStorageService();
+      const uploadURL = await objectStorageService.getObjectEntityUploadURL();
+      res.json({ uploadURL });
+    } catch (error) {
+      console.error("Error getting upload URL:", error);
+      res.status(500).json({ error: "Failed to get upload URL" });
+    }
+  });
+
+  app.get("/objects/:objectPath(*)", async (req, res) => {
+    try {
+      const objectStorageService = new ObjectStorageService();
+      const objectFile = await objectStorageService.getObjectEntityFile(req.path);
+      objectStorageService.downloadObject(objectFile, res);
+    } catch (error) {
+      console.error("Error serving object:", error);
+      if (error instanceof ObjectNotFoundError) {
+        return res.status(404).json({ error: "Object not found" });
+      }
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  app.post("/api/attachments", async (req, res) => {
+    try {
+      const { type, mimeType, fileName, size, storageKey, url } = req.body;
+      
+      if (!type || !mimeType || !storageKey) {
+        return res.status(400).json({ error: "Missing required fields" });
+      }
+
+      const attachment = await storage.createAttachment({
+        type,
+        mimeType,
+        fileName,
+        size,
+        storageKey,
+        url,
+      });
+      
+      res.json(attachment);
+    } catch (error) {
+      console.error("Error creating attachment:", error);
+      res.status(500).json({ error: "Failed to create attachment" });
+    }
+  });
+
+  app.get("/api/attachments/:messageId", async (req, res) => {
+    try {
+      const attachments = await storage.getAttachmentsByMessage(req.params.messageId);
+      res.json(attachments);
+    } catch (error) {
+      console.error("Error fetching attachments:", error);
+      res.status(500).json({ error: "Failed to fetch attachments" });
     }
   });
 

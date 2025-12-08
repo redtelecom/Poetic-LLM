@@ -18,6 +18,18 @@ export interface ProviderConfig {
   model: string;
 }
 
+export interface ImageAttachment {
+  type: "image";
+  mimeType: string;
+  url: string;
+}
+
+export interface MessageContent {
+  role: string;
+  content: string;
+  images?: ImageAttachment[];
+}
+
 export interface ReasoningStep {
   provider: string;
   model: string;
@@ -38,11 +50,12 @@ export interface StreamResult {
 
 export async function callOpenAI(
   model: string,
-  messages: Array<{ role: string; content: string }>
+  messages: Array<MessageContent>
 ): Promise<{ content: string; usage: TokenUsage }> {
+  const formattedMessages = buildOpenAIMessages(messages);
   const response = await openai.chat.completions.create({
     model,
-    messages: messages as any,
+    messages: formattedMessages,
     max_completion_tokens: 8192,
   });
   return {
@@ -56,19 +69,16 @@ export async function callOpenAI(
 
 export async function callAnthropic(
   model: string,
-  messages: Array<{ role: string; content: string }>
+  messages: Array<MessageContent>
 ): Promise<{ content: string; usage: TokenUsage }> {
   const systemMessage = messages.find(m => m.role === "system");
-  const userMessages = messages.filter(m => m.role !== "system");
+  const formattedMessages = buildAnthropicMessages(messages);
   
   const response = await anthropic.messages.create({
     model,
     max_tokens: 8192,
     system: systemMessage?.content,
-    messages: userMessages.map(m => ({
-      role: m.role as "user" | "assistant",
-      content: m.content
-    })),
+    messages: formattedMessages,
   });
 
   const content = response.content[0];
@@ -112,14 +122,32 @@ export async function streamOpenAIWithUsage(
   return { content, usage };
 }
 
+function buildOpenAIMessages(messages: Array<MessageContent>): any[] {
+  return messages.map(m => {
+    if (m.images && m.images.length > 0) {
+      const content: any[] = [{ type: "text", text: m.content }];
+      for (const img of m.images) {
+        content.push({
+          type: "image_url",
+          image_url: { url: img.url }
+        });
+      }
+      return { role: m.role, content };
+    }
+    return { role: m.role, content: m.content };
+  });
+}
+
 export async function* streamOpenAI(
   model: string,
-  messages: Array<{ role: string; content: string }>,
+  messages: Array<MessageContent>,
   onUsage?: (usage: TokenUsage) => void
 ): AsyncGenerator<string> {
+  const formattedMessages = buildOpenAIMessages(messages);
+  
   const stream = await openai.chat.completions.create({
     model,
-    messages: messages as any,
+    messages: formattedMessages,
     max_completion_tokens: 8192,
     stream: true,
     stream_options: { include_usage: true },
@@ -145,22 +173,38 @@ export async function* streamOpenAI(
   }
 }
 
+function buildAnthropicMessages(messages: Array<MessageContent>): any[] {
+  return messages.filter(m => m.role !== "system").map(m => {
+    if (m.images && m.images.length > 0) {
+      const content: any[] = [{ type: "text", text: m.content }];
+      for (const img of m.images) {
+        content.push({
+          type: "image",
+          source: {
+            type: "url",
+            url: img.url
+          }
+        });
+      }
+      return { role: m.role as "user" | "assistant", content };
+    }
+    return { role: m.role as "user" | "assistant", content: m.content };
+  });
+}
+
 export async function* streamAnthropic(
   model: string,
-  messages: Array<{ role: string; content: string }>,
+  messages: Array<MessageContent>,
   onUsage?: (usage: TokenUsage) => void
 ): AsyncGenerator<string> {
   const systemMessage = messages.find(m => m.role === "system");
-  const userMessages = messages.filter(m => m.role !== "system");
+  const formattedMessages = buildAnthropicMessages(messages);
   
   const stream = await anthropic.messages.create({
     model,
     max_tokens: 8192,
     system: systemMessage?.content,
-    messages: userMessages.map(m => ({
-      role: m.role as "user" | "assistant",
-      content: m.content
-    })),
+    messages: formattedMessages,
     stream: true,
   });
 

@@ -37,7 +37,7 @@ export interface ProviderConfig {
 }
 
 export interface StreamEvent {
-  type: "content" | "reasoning_step" | "done" | "error";
+  type: "content" | "reasoning_step" | "done" | "error" | "token_usage";
   content?: string;
   step?: {
     provider: string;
@@ -48,6 +48,10 @@ export interface StreamEvent {
   };
   messageId?: string;
   error?: string;
+  usage?: {
+    inputTokens: number;
+    outputTokens: number;
+  };
 }
 
 export async function* solveTask(

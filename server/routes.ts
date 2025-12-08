@@ -3,7 +3,24 @@ import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { insertConversationSchema, insertMessageSchema, insertSettingsSchema } from "@shared/schema";
 import { PoetiqOrchestrator } from "./llm/orchestrator";
-import type { ProviderConfig } from "./llm/providers";
+import type { ProviderConfig, TokenUsage } from "./llm/providers";
+
+function parsePoetiqResponse(fullResponse: string): { review: string | null; enhancedResponse: string } {
+  const reviewMatch = fullResponse.match(/##\s*Review of Previous Response\s*([\s\S]*?)(?=##\s*Enhanced Response|$)/i);
+  const enhancedMatch = fullResponse.match(/##\s*Enhanced Response\s*([\s\S]*)/i);
+  
+  if (reviewMatch && enhancedMatch) {
+    return {
+      review: reviewMatch[1].trim(),
+      enhancedResponse: enhancedMatch[1].trim()
+    };
+  }
+  
+  return {
+    review: null,
+    enhancedResponse: fullResponse
+  };
+}
 
 export async function registerRoutes(
   httpServer: Server,
@@ -77,6 +94,7 @@ export async function registerRoutes(
       let fullResponse = "";
       let stepNumber = 0;
       const pendingSteps: Array<{ provider: string; model: string; action: string; content: string; stepNumber: number }> = [];
+      let tokenUsage: TokenUsage = { inputTokens: 0, outputTokens: 0 };
       
       for await (const chunk of orchestrator.solveTask(
         message,
@@ -88,17 +106,43 @@ export async function registerRoutes(
             type: "reasoning_step", 
             step: stepData 
           })}\n\n`);
+        },
+        (usage) => {
+          tokenUsage = usage;
         }
       )) {
         fullResponse += chunk;
         res.write(`data: ${JSON.stringify({ type: "content", content: chunk })}\n\n`);
       }
 
+      const { review, enhancedResponse } = parsePoetiqResponse(fullResponse);
+      
+      if (review) {
+        stepNumber++;
+        const reviewStep = {
+          provider: "poetiq",
+          model: "multi-model",
+          action: "review",
+          content: review,
+          stepNumber
+        };
+        pendingSteps.push(reviewStep);
+        res.write(`data: ${JSON.stringify({ 
+          type: "reasoning_step", 
+          step: reviewStep 
+        })}\n\n`);
+      }
+
+      res.write(`data: ${JSON.stringify({ type: "token_usage", usage: tokenUsage })}\n\n`);
+
       const assistantMessage = await storage.createMessage({
         conversationId: req.params.id,
         role: "assistant",
-        content: fullResponse,
-        metadata: { providers: providers.filter((p: ProviderConfig) => p.enabled).map((p: ProviderConfig) => p.id) },
+        content: enhancedResponse,
+        metadata: { 
+          providers: providers.filter((p: ProviderConfig) => p.enabled).map((p: ProviderConfig) => p.id),
+          tokenUsage
+        },
       });
 
       for (const step of pendingSteps) {
@@ -205,6 +249,7 @@ export async function registerRoutes(
       let fullResponse = "";
       let stepNumber = 0;
       const pendingSteps: Array<{ provider: string; model: string; action: string; content: string; stepNumber: number }> = [];
+      let tokenUsage: TokenUsage = { inputTokens: 0, outputTokens: 0 };
 
       const contextPrompt = conversationHistory.length > 1 
         ? `Based on this conversation:\n${conversationHistory.map(m => `${m.role}: ${m.content}`).join('\n')}\n\nRespond to the latest message.`
@@ -220,17 +265,43 @@ export async function registerRoutes(
             type: "reasoning_step", 
             step: stepData 
           })}\n\n`);
+        },
+        (usage) => {
+          tokenUsage = usage;
         }
       )) {
         fullResponse += chunk;
         res.write(`data: ${JSON.stringify({ type: "content", content: chunk })}\n\n`);
       }
 
+      const { review, enhancedResponse } = parsePoetiqResponse(fullResponse);
+      
+      if (review) {
+        stepNumber++;
+        const reviewStep = {
+          provider: "poetiq",
+          model: "multi-model",
+          action: "review",
+          content: review,
+          stepNumber
+        };
+        pendingSteps.push(reviewStep);
+        res.write(`data: ${JSON.stringify({ 
+          type: "reasoning_step", 
+          step: reviewStep 
+        })}\n\n`);
+      }
+
+      res.write(`data: ${JSON.stringify({ type: "token_usage", usage: tokenUsage })}\n\n`);
+
       const assistantMessage = await storage.createMessage({
         conversationId: req.params.id,
         role: "assistant",
-        content: fullResponse,
-        metadata: { providers: providers.filter((p: ProviderConfig) => p.enabled).map((p: ProviderConfig) => p.id) },
+        content: enhancedResponse,
+        metadata: { 
+          providers: providers.filter((p: ProviderConfig) => p.enabled).map((p: ProviderConfig) => p.id),
+          tokenUsage
+        },
       });
 
       for (const step of pendingSteps) {

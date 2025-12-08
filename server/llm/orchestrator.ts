@@ -1,4 +1,4 @@
-import { callOpenAI, callAnthropic, streamOpenAI, streamAnthropic, type ProviderConfig, type ReasoningStep } from "./providers";
+import { callOpenAI, callAnthropic, streamOpenAI, streamAnthropic, type ProviderConfig, type ReasoningStep, type TokenUsage } from "./providers";
 
 export class PoetiqOrchestrator {
   private providers: ProviderConfig[];
@@ -9,7 +9,8 @@ export class PoetiqOrchestrator {
 
   async* solveTask(
     userPrompt: string,
-    onReasoningStep?: (step: ReasoningStep) => void
+    onReasoningStep?: (step: ReasoningStep) => void,
+    onTokenUsage?: (usage: TokenUsage) => void
   ): AsyncGenerator<string> {
     const enabledProviders = this.providers.filter(p => p.enabled);
     
@@ -45,11 +46,11 @@ Focus on clarity, logical progression, and actionable insights.`;
       ];
 
       if (provider.id === "openai") {
-        for await (const chunk of streamOpenAI(provider.model, messages)) {
+        for await (const chunk of streamOpenAI(provider.model, messages, onTokenUsage)) {
           yield chunk;
         }
       } else if (provider.id === "anthropic") {
-        for await (const chunk of streamAnthropic(provider.model, messages)) {
+        for await (const chunk of streamAnthropic(provider.model, messages, onTokenUsage)) {
           yield chunk;
         }
       }
@@ -77,10 +78,18 @@ Focus on clarity, logical progression, and actionable insights.`;
       ];
 
       let initialResponse = "";
+      let accumulatedUsage = { inputTokens: 0, outputTokens: 0 };
+      
       if (primaryProvider.id === "openai") {
-        initialResponse = await callOpenAI(primaryProvider.model, messages);
+        const result = await callOpenAI(primaryProvider.model, messages);
+        initialResponse = result.content;
+        accumulatedUsage.inputTokens += result.usage.inputTokens;
+        accumulatedUsage.outputTokens += result.usage.outputTokens;
       } else if (primaryProvider.id === "anthropic") {
-        initialResponse = await callAnthropic(primaryProvider.model, messages);
+        const result = await callAnthropic(primaryProvider.model, messages);
+        initialResponse = result.content;
+        accumulatedUsage.inputTokens += result.usage.inputTokens;
+        accumulatedUsage.outputTokens += result.usage.outputTokens;
       }
 
       onReasoningStep?.({
@@ -100,12 +109,20 @@ Focus on clarity, logical progression, and actionable insights.`;
         }
       ];
 
+      const handleFinalUsage = (streamUsage: { inputTokens: number; outputTokens: number }) => {
+        const totalUsage = {
+          inputTokens: accumulatedUsage.inputTokens + streamUsage.inputTokens,
+          outputTokens: accumulatedUsage.outputTokens + streamUsage.outputTokens,
+        };
+        onTokenUsage?.(totalUsage);
+      };
+
       if (secondaryProvider.id === "openai") {
-        for await (const chunk of streamOpenAI(secondaryProvider.model, refineMessages)) {
+        for await (const chunk of streamOpenAI(secondaryProvider.model, refineMessages, handleFinalUsage)) {
           yield chunk;
         }
       } else if (secondaryProvider.id === "anthropic") {
-        for await (const chunk of streamAnthropic(secondaryProvider.model, refineMessages)) {
+        for await (const chunk of streamAnthropic(secondaryProvider.model, refineMessages, handleFinalUsage)) {
           yield chunk;
         }
       }
@@ -157,9 +174,11 @@ Focus on clarity, logical progression, and actionable insights.`;
     try {
       let title = "";
       if (provider.id === "openai") {
-        title = await callOpenAI(provider.model, messages);
+        const result = await callOpenAI(provider.model, messages);
+        title = result.content;
       } else if (provider.id === "anthropic") {
-        title = await callAnthropic(provider.model, messages);
+        const result = await callAnthropic(provider.model, messages);
+        title = result.content;
       }
       return title.trim().replace(/^["']|["']$/g, "").slice(0, 60);
     } catch (error) {
@@ -183,9 +202,11 @@ Focus on clarity, logical progression, and actionable insights.`;
     try {
       let summary = "";
       if (provider.id === "openai") {
-        summary = await callOpenAI(provider.model, messages);
+        const result = await callOpenAI(provider.model, messages);
+        summary = result.content;
       } else if (provider.id === "anthropic") {
-        summary = await callAnthropic(provider.model, messages);
+        const result = await callAnthropic(provider.model, messages);
+        summary = result.content;
       }
       return summary.trim();
     } catch (error) {

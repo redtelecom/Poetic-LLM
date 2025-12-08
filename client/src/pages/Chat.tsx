@@ -5,6 +5,8 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Sidebar } from "@/components/layout/Sidebar";
 import SettingsTab from "@/components/settings/SettingsTab";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { 
   Send, 
   Loader2, 
@@ -14,7 +16,8 @@ import {
   MessageCircle,
   Menu,
   Brain,
-  CheckCircle2
+  CheckCircle2,
+  Zap
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "@/hooks/use-toast";
@@ -55,6 +58,7 @@ export default function Chat() {
   const [showReasoning, setShowReasoning] = useState(false);
   const [reasoningSteps, setReasoningSteps] = useState<ReasoningStep[]>([]);
   const [streamingReasoning, setStreamingReasoning] = useState<ReasoningStep[]>([]);
+  const [tokenUsage, setTokenUsage] = useState<{ inputTokens: number; outputTokens: number } | null>(null);
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -198,6 +202,7 @@ export default function Chat() {
     setIsLoading(true);
     setStreamingContent("");
     setStreamingReasoning([]);
+    setTokenUsage(null);
 
     const tempUserMessage: Message = {
       id: "temp-user-" + Date.now(),
@@ -227,6 +232,8 @@ export default function Chat() {
           };
           collectedSteps.push(newStep);
           setStreamingReasoning([...collectedSteps]);
+        } else if (event.type === "token_usage" && event.usage) {
+          setTokenUsage(event.usage);
         } else if (event.type === "done") {
           setStreamingContent("");
           setStreamingReasoning([]);
@@ -372,14 +379,17 @@ export default function Chat() {
                         ? "bg-indigo-600 text-white border-indigo-600" 
                         : "bg-white border-neutral-200"
                     )}>
-                      <div className="prose prose-sm max-w-none">
-                        <pre className={cn(
-                          "whitespace-pre-wrap font-sans text-sm",
-                          message.role === "user" ? "text-white" : "text-neutral-800"
-                        )}>
+                      {message.role === "user" ? (
+                        <pre className="whitespace-pre-wrap font-sans text-sm text-white">
                           {message.content}
                         </pre>
-                      </div>
+                      ) : (
+                        <div className="prose prose-sm max-w-none prose-neutral">
+                          <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                            {message.content}
+                          </ReactMarkdown>
+                        </div>
+                      )}
                     </Card>
                     {message.role === "user" && (
                       <div className="w-8 h-8 rounded-full bg-neutral-200 flex items-center justify-center shrink-0">
@@ -395,11 +405,11 @@ export default function Chat() {
                       <Bot className="w-4 h-4 text-indigo-600" />
                     </div>
                     <Card className="max-w-[80%] p-4 bg-white border-neutral-200">
-                      <div className="prose prose-sm max-w-none">
-                        <pre className="whitespace-pre-wrap font-sans text-sm text-neutral-800">
+                      <div className="prose prose-sm max-w-none prose-neutral">
+                        <ReactMarkdown remarkPlugins={[remarkGfm]}>
                           {streamingContent}
-                          <span className="inline-block w-2 h-4 bg-indigo-600 ml-1 animate-pulse" />
-                        </pre>
+                        </ReactMarkdown>
+                        <span className="inline-block w-2 h-4 bg-indigo-600 ml-1 animate-pulse" />
                       </div>
                     </Card>
                   </div>
@@ -493,12 +503,20 @@ export default function Chat() {
                 </div>
                 <div className="flex items-center justify-between mt-2 text-xs text-neutral-500">
                   <span>Press Enter to send, Shift+Enter for new line</span>
-                  <div className="flex gap-2">
-                    {providers.filter(p => p.enabled).map(p => (
-                      <Badge key={p.id} variant="outline" className="text-xs">
-                        {p.name}
-                      </Badge>
-                    ))}
+                  <div className="flex items-center gap-3">
+                    {tokenUsage && (
+                      <div className="flex items-center gap-1 text-indigo-600" data-testid="text-token-usage">
+                        <Zap className="w-3 h-3" />
+                        <span>{tokenUsage.inputTokens.toLocaleString()} in / {tokenUsage.outputTokens.toLocaleString()} out</span>
+                      </div>
+                    )}
+                    <div className="flex gap-2">
+                      {providers.filter(p => p.enabled).map(p => (
+                        <Badge key={p.id} variant="outline" className="text-xs">
+                          {p.name}
+                        </Badge>
+                      ))}
+                    </div>
                   </div>
                 </div>
               </div>

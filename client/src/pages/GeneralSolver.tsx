@@ -100,7 +100,7 @@ export default function GeneralSolver() {
   const loadSettings = async () => {
     try {
       const settings = await fetchSettings();
-      if (settings.providers && Array.isArray(settings.providers)) {
+      if (settings.providers && Array.isArray(settings.providers) && settings.providers.length > 0) {
         setProviders(settings.providers as ProviderConfig[]);
       }
     } catch (error) {

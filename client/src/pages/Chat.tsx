@@ -13,12 +13,12 @@ import {
   Settings2,
   MessageCircle,
   Menu,
-  Brain
+  Brain,
+  CheckCircle2
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "@/hooks/use-toast";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
-import { Link } from "wouter";
 import { 
   fetchConversations, 
   fetchConversation, 
@@ -26,8 +26,17 @@ import {
   deleteConversation,
   sendChatMessage,
   fetchSettings,
+  fetchReasoningSteps,
   type ProviderConfig 
 } from "@/lib/api";
+
+interface ReasoningStep {
+  id: number;
+  provider: string;
+  model: string;
+  action: string;
+  content: string;
+}
 import type { Conversation, Message } from "@shared/schema";
 
 export default function Chat() {
@@ -43,6 +52,9 @@ export default function Chat() {
     { id: "openai", name: "OpenAI", enabled: true, model: "gpt-5" },
     { id: "anthropic", name: "Anthropic", enabled: true, model: "claude-sonnet-4-5" }
   ]);
+  const [showReasoning, setShowReasoning] = useState(false);
+  const [reasoningSteps, setReasoningSteps] = useState<ReasoningStep[]>([]);
+  const [streamingReasoning, setStreamingReasoning] = useState<ReasoningStep[]>([]);
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -73,6 +85,25 @@ export default function Chat() {
     try {
       const { messages: msgs } = await fetchConversation(id);
       setMessages(msgs);
+      
+      const lastAssistantMessage = msgs.filter(m => m.role === "assistant").pop();
+      if (lastAssistantMessage) {
+        try {
+          const steps = await fetchReasoningSteps(lastAssistantMessage.id);
+          const formattedSteps: ReasoningStep[] = steps.map((s: any) => ({
+            id: s.stepNumber,
+            provider: s.provider,
+            model: s.model,
+            action: s.action,
+            content: s.content
+          }));
+          setReasoningSteps(formattedSteps);
+        } catch (err) {
+          setReasoningSteps([]);
+        }
+      } else {
+        setReasoningSteps([]);
+      }
     } catch (error) {
       console.error("Failed to load conversation:", error);
     }
@@ -166,6 +197,7 @@ export default function Chat() {
     setInput("");
     setIsLoading(true);
     setStreamingContent("");
+    setStreamingReasoning([]);
 
     const tempUserMessage: Message = {
       id: "temp-user-" + Date.now(),
@@ -178,14 +210,27 @@ export default function Chat() {
     setMessages(prev => [...prev, tempUserMessage]);
 
     let fullResponse = "";
+    const collectedSteps: ReasoningStep[] = [];
 
     try {
       for await (const event of sendChatMessage(conversationId, userMessage, providers)) {
         if (event.type === "content") {
           fullResponse += event.content;
           setStreamingContent(fullResponse);
+        } else if (event.type === "reasoning_step" && event.step) {
+          const newStep: ReasoningStep = {
+            id: event.step.stepNumber,
+            provider: event.step.provider,
+            model: event.step.model,
+            action: event.step.action,
+            content: event.step.content
+          };
+          collectedSteps.push(newStep);
+          setStreamingReasoning([...collectedSteps]);
         } else if (event.type === "done") {
           setStreamingContent("");
+          setStreamingReasoning([]);
+          setReasoningSteps(collectedSteps);
           setIsLoading(false);
           await loadConversation(conversationId!);
           await loadConversations();
@@ -197,6 +242,7 @@ export default function Chat() {
       console.error("Error during chat:", error);
       setIsLoading(false);
       setStreamingContent("");
+      setStreamingReasoning([]);
       toast({
         title: "Error",
         description: "Failed to send message. Please try again.",
@@ -254,17 +300,16 @@ export default function Chat() {
           </div>
           
           <div className="flex items-center gap-2">
-            <Link href="/">
-              <Button 
-                variant="ghost" 
-                size="sm"
-                className="gap-2"
-                data-testid="button-solver-link"
-              >
-                <Brain className="w-4 h-4" />
-                Solver
-              </Button>
-            </Link>
+            <Button 
+              variant={showReasoning ? "secondary" : "ghost"} 
+              size="sm"
+              onClick={() => setShowReasoning(!showReasoning)}
+              className="gap-2"
+              data-testid="button-reasoning-toggle"
+            >
+              <Brain className="w-4 h-4" />
+              {showReasoning ? "Hide Reasoning" : "Show Reasoning"}
+            </Button>
             <Button 
               variant={activeTab === "chat" ? "secondary" : "ghost"} 
               size="sm"
@@ -296,8 +341,9 @@ export default function Chat() {
           </main>
         ) : (
           <>
-            <main className="flex-1 overflow-y-auto p-6">
-              <div className="max-w-3xl mx-auto space-y-4">
+            <div className="flex-1 flex overflow-hidden">
+              <main className={cn("flex-1 overflow-y-auto p-6", showReasoning && "lg:w-1/2")}>
+                <div className="max-w-3xl mx-auto space-y-4">
                 {messages.length === 0 && !streamingContent && (
                   <div className="text-center py-20 text-neutral-400">
                     <MessageCircle className="w-16 h-16 mx-auto mb-4 opacity-50" />
@@ -362,6 +408,62 @@ export default function Chat() {
                 <div ref={messagesEndRef} />
               </div>
             </main>
+
+              {showReasoning && (
+                <aside className="hidden lg:block w-1/2 border-l border-neutral-200 bg-white overflow-y-auto p-6">
+                  <div className="space-y-4">
+                    <div className="flex items-center gap-2 mb-4">
+                      <Brain className="w-5 h-5 text-indigo-600" />
+                      <h2 className="text-lg font-semibold">Reasoning Process</h2>
+                    </div>
+                    
+                    {(isLoading ? streamingReasoning : reasoningSteps).length === 0 && !isLoading && (
+                      <div className="text-center py-12 text-neutral-400">
+                        <Brain className="w-12 h-12 mx-auto mb-3 opacity-50" />
+                        <p>Reasoning steps will appear here</p>
+                        <p className="text-sm mt-1">Send a message to see the AI's thinking process</p>
+                      </div>
+                    )}
+                    
+                    {(isLoading ? streamingReasoning : reasoningSteps).map((step, index) => (
+                      <div 
+                        key={step.id} 
+                        className="relative pl-8"
+                        data-testid={`reasoning-step-${step.id}`}
+                      >
+                        {index !== (isLoading ? streamingReasoning : reasoningSteps).length - 1 && (
+                          <div className="absolute left-[11px] top-6 w-[2px] h-[calc(100%+16px)] bg-indigo-200" />
+                        )}
+                        
+                        <div className="absolute left-0 top-0 w-6 h-6 rounded-full border-2 flex items-center justify-center z-10 bg-indigo-600 text-white border-indigo-600">
+                          <CheckCircle2 className="w-4 h-4" />
+                        </div>
+                        
+                        <Card className="p-4">
+                          <div className="flex items-center gap-2 mb-2">
+                            <Badge className="text-[10px] bg-indigo-100 text-indigo-700 border-indigo-200">
+                              {step.provider}
+                            </Badge>
+                            <Badge variant="outline" className="text-[10px]">
+                              {step.action}
+                            </Badge>
+                          </div>
+                          <p className="text-sm text-neutral-700">{step.content}</p>
+                          <p className="text-xs text-neutral-500 mt-1">Model: {step.model}</p>
+                        </Card>
+                      </div>
+                    ))}
+                    
+                    {isLoading && streamingReasoning.length > 0 && (
+                      <div className="flex items-center gap-2 text-indigo-600 text-sm">
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        <span>Processing...</span>
+                      </div>
+                    )}
+                  </div>
+                </aside>
+              )}
+            </div>
 
             <footer className="bg-white border-t border-neutral-200 p-4 shrink-0">
               <div className="max-w-3xl mx-auto">

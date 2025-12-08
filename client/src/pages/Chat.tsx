@@ -214,7 +214,7 @@ export default function Chat() {
 
   return (
     <div className="min-h-screen bg-neutral-50 font-sans text-neutral-900 flex overflow-hidden">
-      <div className="hidden lg:block w-72 h-screen sticky top-0">
+      <div className="hidden md:block w-72 h-screen sticky top-0">
         <Sidebar 
           conversations={conversations}
           activeId={activeConversationId}
@@ -229,7 +229,7 @@ export default function Chat() {
           <div className="flex items-center gap-3">
             <Sheet>
               <SheetTrigger asChild>
-                <Button variant="ghost" size="icon" className="lg:hidden -ml-2" data-testid="button-mobile-menu">
+                <Button variant="ghost" size="icon" className="md:hidden -ml-2" data-testid="button-mobile-menu">
                   <Menu className="w-5 h-5" />
                 </Button>
               </SheetTrigger>

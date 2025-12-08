@@ -162,7 +162,7 @@ export default function SettingsTab() {
                         <SelectTrigger className="w-[280px] h-9 bg-white text-sm">
                           <SelectValue placeholder="Select model" />
                         </SelectTrigger>
-                        <SelectContent>
+                        <SelectContent className="bg-white border-neutral-200 shadow-lg">
                           {provider.models.map((m) => (
                             <SelectItem key={m.id} value={m.id}>
                               <div className="flex items-center justify-between w-full gap-4">

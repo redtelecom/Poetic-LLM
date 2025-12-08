@@ -23,6 +23,7 @@ export interface ReasoningStep {
   model: string;
   action: string;
   content: string;
+  tokenUsage?: TokenUsage;
 }
 
 export interface TokenUsage {

@@ -93,7 +93,7 @@ export async function registerRoutes(
       const orchestrator = new PoetiqOrchestrator(providers as ProviderConfig[]);
       let fullResponse = "";
       let stepNumber = 0;
-      const pendingSteps: Array<{ provider: string; model: string; action: string; content: string; stepNumber: number }> = [];
+      const pendingSteps: Array<{ provider: string; model: string; action: string; content: string; stepNumber: number; tokenUsage?: { inputTokens: number; outputTokens: number } }> = [];
       let tokenUsage: TokenUsage = { inputTokens: 0, outputTokens: 0 };
       
       for await (const chunk of orchestrator.solveTask(

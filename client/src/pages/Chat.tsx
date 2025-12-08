@@ -41,6 +41,10 @@ interface ReasoningStep {
   model: string;
   action: string;
   content: string;
+  tokenUsage?: {
+    inputTokens: number;
+    outputTokens: number;
+  };
 }
 import type { Conversation, Message } from "@shared/schema";
 
@@ -241,7 +245,8 @@ export default function Chat() {
             provider: event.step.provider,
             model: event.step.model,
             action: event.step.action,
-            content: event.step.content
+            content: event.step.content,
+            tokenUsage: event.step.tokenUsage
           };
           collectedSteps.push(newStep);
           setStreamingReasoning([...collectedSteps]);
@@ -456,9 +461,9 @@ export default function Chat() {
                         <h2 className="text-lg font-semibold">Reasoning Process</h2>
                       </div>
                       {tokenUsage && (tokenUsage.inputTokens > 0 || tokenUsage.outputTokens > 0) && (
-                        <div className="flex items-center gap-1 text-xs text-indigo-600 bg-indigo-50 px-2 py-1 rounded" data-testid="text-reasoning-tokens">
+                        <div className="flex items-center gap-1 text-xs text-indigo-600 bg-indigo-50 px-2 py-1 rounded" data-testid="text-reasoning-tokens" title="Total tokens for this message">
                           <Zap className="w-3 h-3" />
-                          <span>{tokenUsage.inputTokens.toLocaleString()} in / {tokenUsage.outputTokens.toLocaleString()} out</span>
+                          <span>Total: {tokenUsage.inputTokens.toLocaleString()} in / {tokenUsage.outputTokens.toLocaleString()} out</span>
                         </div>
                       )}
                     </div>
@@ -486,13 +491,21 @@ export default function Chat() {
                         </div>
                         
                         <Card className="p-4">
-                          <div className="flex items-center gap-2 mb-2">
-                            <Badge className="text-[10px] bg-indigo-100 text-indigo-700 border-indigo-200">
-                              {step.provider}
-                            </Badge>
-                            <Badge variant="outline" className="text-[10px]">
-                              {step.action}
-                            </Badge>
+                          <div className="flex items-center justify-between mb-2">
+                            <div className="flex items-center gap-2">
+                              <Badge className="text-[10px] bg-indigo-100 text-indigo-700 border-indigo-200">
+                                {step.provider}
+                              </Badge>
+                              <Badge variant="outline" className="text-[10px]">
+                                {step.action}
+                              </Badge>
+                            </div>
+                            {step.tokenUsage && (step.tokenUsage.inputTokens > 0 || step.tokenUsage.outputTokens > 0) && (
+                              <div className="flex items-center gap-1 text-[10px] text-indigo-600" data-testid={`tokens-step-${step.id}`}>
+                                <Zap className="w-3 h-3" />
+                                <span>{step.tokenUsage.inputTokens.toLocaleString()} / {step.tokenUsage.outputTokens.toLocaleString()}</span>
+                              </div>
+                            )}
                           </div>
                           <p className="text-sm text-neutral-700">{step.content}</p>
                           <p className="text-xs text-neutral-500 mt-1">Model: {step.model}</p>
@@ -541,9 +554,9 @@ export default function Chat() {
                   <span>Press Enter to send, Shift+Enter for new line</span>
                   <div className="flex items-center gap-3">
                     {tokenUsage && (
-                      <div className="flex items-center gap-1 text-indigo-600" data-testid="text-token-usage">
+                      <div className="flex items-center gap-1 text-indigo-600" data-testid="text-token-usage" title="Total tokens for this message">
                         <Zap className="w-3 h-3" />
-                        <span>{tokenUsage.inputTokens.toLocaleString()} in / {tokenUsage.outputTokens.toLocaleString()} out</span>
+                        <span>Total: {tokenUsage.inputTokens.toLocaleString()} in / {tokenUsage.outputTokens.toLocaleString()} out</span>
                       </div>
                     )}
                     <div className="flex gap-2">

@@ -33,27 +33,34 @@ Focus on clarity, logical progression, and actionable insights.`;
     if (enabledProviders.length === 1) {
       const provider = enabledProviders[0];
       
-      onReasoningStep?.({
-        provider: provider.id,
-        model: provider.model,
-        action: "generate",
-        content: `Using ${provider.name} (${provider.model}) for single-model reasoning`,
-      });
-
       const messages = [
         { role: "system", content: systemPrompt },
         { role: "user", content: userPrompt }
       ];
 
+      let stepUsage: { inputTokens: number; outputTokens: number } = { inputTokens: 0, outputTokens: 0 };
+      const handleUsage = (usage: { inputTokens: number; outputTokens: number }) => {
+        stepUsage = usage;
+        onTokenUsage?.(usage);
+      };
+
       if (provider.id === "openai") {
-        for await (const chunk of streamOpenAI(provider.model, messages, onTokenUsage)) {
+        for await (const chunk of streamOpenAI(provider.model, messages, handleUsage)) {
           yield chunk;
         }
       } else if (provider.id === "anthropic") {
-        for await (const chunk of streamAnthropic(provider.model, messages, onTokenUsage)) {
+        for await (const chunk of streamAnthropic(provider.model, messages, handleUsage)) {
           yield chunk;
         }
       }
+
+      onReasoningStep?.({
+        provider: provider.id,
+        model: provider.model,
+        action: "generate",
+        content: `Generated response with ${provider.name} (${provider.model})`,
+        tokenUsage: stepUsage,
+      });
     } else {
       onReasoningStep?.({
         provider: "orchestrator",
@@ -65,38 +72,35 @@ Focus on clarity, logical progression, and actionable insights.`;
       const primaryProvider = enabledProviders[0];
       const secondaryProvider = enabledProviders[1];
 
-      onReasoningStep?.({
-        provider: primaryProvider.id,
-        model: primaryProvider.model,
-        action: "generate",
-        content: `Generating initial solution with ${primaryProvider.name}`,
-      });
-
       const messages = [
         { role: "system", content: systemPrompt },
         { role: "user", content: userPrompt }
       ];
 
       let initialResponse = "";
+      let primaryUsage = { inputTokens: 0, outputTokens: 0 };
       let accumulatedUsage = { inputTokens: 0, outputTokens: 0 };
       
       if (primaryProvider.id === "openai") {
         const result = await callOpenAI(primaryProvider.model, messages);
         initialResponse = result.content;
+        primaryUsage = result.usage;
         accumulatedUsage.inputTokens += result.usage.inputTokens;
         accumulatedUsage.outputTokens += result.usage.outputTokens;
       } else if (primaryProvider.id === "anthropic") {
         const result = await callAnthropic(primaryProvider.model, messages);
         initialResponse = result.content;
+        primaryUsage = result.usage;
         accumulatedUsage.inputTokens += result.usage.inputTokens;
         accumulatedUsage.outputTokens += result.usage.outputTokens;
       }
 
       onReasoningStep?.({
-        provider: secondaryProvider.id,
-        model: secondaryProvider.model,
-        action: "refine",
-        content: `Refining and critiquing with ${secondaryProvider.name}`,
+        provider: primaryProvider.id,
+        model: primaryProvider.model,
+        action: "generate",
+        content: `Generated initial solution with ${primaryProvider.name}`,
+        tokenUsage: primaryUsage,
       });
 
       const refineMessages = [
@@ -109,7 +113,9 @@ Focus on clarity, logical progression, and actionable insights.`;
         }
       ];
 
+      let secondaryUsage = { inputTokens: 0, outputTokens: 0 };
       const handleFinalUsage = (streamUsage: { inputTokens: number; outputTokens: number }) => {
+        secondaryUsage = streamUsage;
         const totalUsage = {
           inputTokens: accumulatedUsage.inputTokens + streamUsage.inputTokens,
           outputTokens: accumulatedUsage.outputTokens + streamUsage.outputTokens,
@@ -126,6 +132,14 @@ Focus on clarity, logical progression, and actionable insights.`;
           yield chunk;
         }
       }
+
+      onReasoningStep?.({
+        provider: secondaryProvider.id,
+        model: secondaryProvider.model,
+        action: "refine",
+        content: `Refined and enhanced with ${secondaryProvider.name}`,
+        tokenUsage: secondaryUsage,
+      });
     }
   }
 

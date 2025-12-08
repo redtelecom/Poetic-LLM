@@ -45,6 +45,10 @@ export interface StreamEvent {
     action: string;
     content: string;
     stepNumber: number;
+    tokenUsage?: {
+      inputTokens: number;
+      outputTokens: number;
+    };
   };
   messageId?: string;
   error?: string;

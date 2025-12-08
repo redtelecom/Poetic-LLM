@@ -60,6 +60,10 @@ export default function Chat() {
     try {
       const convs = await fetchConversations();
       setConversations(convs);
+      if (convs.length > 0 && !activeConversationId) {
+        setActiveConversationId(convs[0].id);
+        loadConversation(convs[0].id);
+      }
     } catch (error) {
       console.error("Failed to load conversations:", error);
     }

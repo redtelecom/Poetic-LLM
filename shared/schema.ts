@@ -36,6 +36,14 @@ export const settings = pgTable("settings", {
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
+export const conversationSummaries = pgTable("conversation_summaries", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  conversationId: varchar("conversation_id").notNull().references(() => conversations.id, { onDelete: "cascade" }),
+  summary: text("summary").notNull(),
+  messageCount: integer("message_count").notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
 export const insertConversationSchema = createInsertSchema(conversations).omit({
   id: true,
   createdAt: true,
@@ -57,6 +65,11 @@ export const insertSettingsSchema = createInsertSchema(settings).omit({
   updatedAt: true,
 });
 
+export const insertConversationSummarySchema = createInsertSchema(conversationSummaries).omit({
+  id: true,
+  updatedAt: true,
+});
+
 export type InsertConversation = z.infer<typeof insertConversationSchema>;
 export type Conversation = typeof conversations.$inferSelect;
 
@@ -68,3 +81,6 @@ export type ReasoningStep = typeof reasoningSteps.$inferSelect;
 
 export type InsertSettings = z.infer<typeof insertSettingsSchema>;
 export type Settings = typeof settings.$inferSelect;
+
+export type InsertConversationSummary = z.infer<typeof insertConversationSummarySchema>;
+export type ConversationSummary = typeof conversationSummaries.$inferSelect;

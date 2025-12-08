@@ -7,10 +7,13 @@ import {
   type InsertReasoningStep,
   type Settings,
   type InsertSettings,
+  type ConversationSummary,
+  type InsertConversationSummary,
   conversations,
   messages,
   reasoningSteps,
   settings,
+  conversationSummaries,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc } from "drizzle-orm";
@@ -30,6 +33,9 @@ export interface IStorage {
   
   getSettings(): Promise<Settings | undefined>;
   updateSettings(settingsData: InsertSettings): Promise<Settings>;
+  
+  getConversationSummary(conversationId: string): Promise<ConversationSummary | undefined>;
+  upsertConversationSummary(data: InsertConversationSummary): Promise<ConversationSummary>;
 }
 
 export class PostgresStorage implements IStorage {
@@ -100,6 +106,28 @@ export class PostgresStorage implements IStorage {
       return result[0];
     } else {
       const result = await db.insert(settings).values(settingsData).returning();
+      return result[0];
+    }
+  }
+
+  async getConversationSummary(conversationId: string): Promise<ConversationSummary | undefined> {
+    const result = await db.select().from(conversationSummaries)
+      .where(eq(conversationSummaries.conversationId, conversationId))
+      .limit(1);
+    return result[0];
+  }
+
+  async upsertConversationSummary(data: InsertConversationSummary): Promise<ConversationSummary> {
+    const existing = await this.getConversationSummary(data.conversationId);
+    
+    if (existing) {
+      const result = await db.update(conversationSummaries)
+        .set({ ...data, updatedAt: new Date() })
+        .where(eq(conversationSummaries.id, existing.id))
+        .returning();
+      return result[0];
+    } else {
+      const result = await db.insert(conversationSummaries).values(data).returning();
       return result[0];
     }
   }

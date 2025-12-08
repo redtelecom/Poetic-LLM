@@ -159,6 +159,9 @@ export async function registerRoutes(
   });
 
   app.post("/api/conversations/:id/chat", async (req, res) => {
+    const SLIDING_WINDOW_SIZE = 10;
+    const SUMMARY_TRIGGER_COUNT = 6;
+    
     try {
       const { message, providers } = req.body;
       
@@ -170,7 +173,7 @@ export async function registerRoutes(
       res.setHeader("Cache-Control", "no-cache");
       res.setHeader("Connection", "keep-alive");
 
-      const userMessage = await storage.createMessage({
+      await storage.createMessage({
         conversationId: req.params.id,
         role: "user",
         content: message,
@@ -178,11 +181,25 @@ export async function registerRoutes(
       });
 
       const existingMessages = await storage.getMessages(req.params.id);
+      const existingSummary = await storage.getConversationSummary(req.params.id);
       
-      const conversationHistory = existingMessages.map((m) => ({
-        role: m.role as "user" | "assistant",
-        content: m.content
-      }));
+      const recentMessages = existingMessages.slice(-SLIDING_WINDOW_SIZE);
+      
+      const conversationHistory: Array<{ role: "user" | "assistant" | "system"; content: string }> = [];
+      
+      if (existingSummary) {
+        conversationHistory.push({
+          role: "system",
+          content: `Previous conversation summary:\n${existingSummary.summary}`
+        });
+      }
+      
+      for (const m of recentMessages) {
+        conversationHistory.push({
+          role: m.role as "user" | "assistant",
+          content: m.content
+        });
+      }
 
       const orchestrator = new PoetiqOrchestrator(providers as ProviderConfig[]);
       let fullResponse = "";
@@ -199,10 +216,44 @@ export async function registerRoutes(
         metadata: { providers: providers.filter((p: ProviderConfig) => p.enabled).map((p: ProviderConfig) => p.id) },
       });
 
-      const messages = await storage.getMessages(req.params.id);
-      if (messages.length === 2) {
+      const allMessages = await storage.getMessages(req.params.id);
+      
+      if (allMessages.length === 2) {
         const title = await orchestrator.generateTitle(message);
         await storage.updateConversation(req.params.id, { title });
+      }
+
+      const lastSummaryCount = existingSummary?.messageCount || 0;
+      const messagesSinceLastSummary = allMessages.length - lastSummaryCount;
+      const turnsSinceLastSummary = Math.floor(messagesSinceLastSummary / 2);
+      
+      if (turnsSinceLastSummary >= SUMMARY_TRIGGER_COUNT && allMessages.length > SLIDING_WINDOW_SIZE) {
+        const messagesToSummarize = allMessages.slice(0, -SLIDING_WINDOW_SIZE);
+        const summaryContent = messagesToSummarize.map(m => 
+          `${m.role === "user" ? "User" : "Assistant"}: ${m.content.slice(0, 500)}${m.content.length > 500 ? "..." : ""}`
+        ).join("\n\n");
+        
+        const summaryPrompt = `Summarize this conversation history into a concise summary. Include:
+- User's main goals and requests
+- Key decisions made
+- Important context and information shared
+- Open questions or pending items
+
+Conversation:
+${summaryContent}
+
+Provide a concise summary (2-3 paragraphs max):`;
+
+        try {
+          const summary = await orchestrator.generateSummary(summaryPrompt);
+          await storage.upsertConversationSummary({
+            conversationId: req.params.id,
+            summary,
+            messageCount: allMessages.length,
+          });
+        } catch (summaryError) {
+          console.error("Error generating summary:", summaryError);
+        }
       }
 
       res.write(`data: ${JSON.stringify({ type: "done", messageId: assistantMessage.id })}\n\n`);

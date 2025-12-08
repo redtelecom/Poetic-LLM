@@ -167,4 +167,30 @@ Focus on clarity, logical progression, and actionable insights.`;
       return "New Conversation";
     }
   }
+
+  async generateSummary(prompt: string): Promise<string> {
+    const provider = this.providers[0];
+    if (!provider) return "";
+
+    const messages = [
+      { 
+        role: "system", 
+        content: "You are a helpful assistant that creates concise conversation summaries." 
+      },
+      { role: "user", content: prompt }
+    ];
+
+    try {
+      let summary = "";
+      if (provider.id === "openai") {
+        summary = await callOpenAI(provider.model, messages);
+      } else if (provider.id === "anthropic") {
+        summary = await callAnthropic(provider.model, messages);
+      }
+      return summary.trim();
+    } catch (error) {
+      console.error("Error generating summary:", error);
+      return "";
+    }
+  }
 }

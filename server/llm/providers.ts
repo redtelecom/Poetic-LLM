@@ -126,20 +126,22 @@ export async function* streamOpenAI(
 
   let usage: TokenUsage = { inputTokens: 0, outputTokens: 0 };
 
-  for await (const chunk of stream) {
-    const content = chunk.choices[0]?.delta?.content;
-    if (content) {
-      yield content;
+  try {
+    for await (const chunk of stream) {
+      const content = chunk.choices[0]?.delta?.content;
+      if (content) {
+        yield content;
+      }
+      if (chunk.usage) {
+        usage = {
+          inputTokens: chunk.usage.prompt_tokens || 0,
+          outputTokens: chunk.usage.completion_tokens || 0,
+        };
+      }
     }
-    if (chunk.usage) {
-      usage = {
-        inputTokens: chunk.usage.prompt_tokens || 0,
-        outputTokens: chunk.usage.completion_tokens || 0,
-      };
-    }
+  } finally {
+    onUsage?.(usage);
   }
-
-  onUsage?.(usage);
 }
 
 export async function* streamAnthropic(
@@ -163,17 +165,19 @@ export async function* streamAnthropic(
 
   let usage: TokenUsage = { inputTokens: 0, outputTokens: 0 };
 
-  for await (const event of stream) {
-    if (event.type === "content_block_delta" && event.delta.type === "text_delta") {
-      yield event.delta.text;
+  try {
+    for await (const event of stream) {
+      if (event.type === "content_block_delta" && event.delta.type === "text_delta") {
+        yield event.delta.text;
+      }
+      if (event.type === "message_delta" && event.usage) {
+        usage.outputTokens = event.usage.output_tokens || 0;
+      }
+      if (event.type === "message_start" && event.message?.usage) {
+        usage.inputTokens = event.message.usage.input_tokens || 0;
+      }
     }
-    if (event.type === "message_delta" && event.usage) {
-      usage.outputTokens = event.usage.output_tokens || 0;
-    }
-    if (event.type === "message_start" && event.message?.usage) {
-      usage.inputTokens = event.message.usage.input_tokens || 0;
-    }
+  } finally {
+    onUsage?.(usage);
   }
-
-  onUsage?.(usage);
 }

@@ -17,7 +17,9 @@ import {
   Menu,
   Brain,
   CheckCircle2,
-  Zap
+  Zap,
+  Copy,
+  Check
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "@/hooks/use-toast";
@@ -59,6 +61,17 @@ export default function Chat() {
   const [reasoningSteps, setReasoningSteps] = useState<ReasoningStep[]>([]);
   const [streamingReasoning, setStreamingReasoning] = useState<ReasoningStep[]>([]);
   const [tokenUsage, setTokenUsage] = useState<{ inputTokens: number; outputTokens: number } | null>(null);
+  const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
+
+  const copyToClipboard = async (content: string, messageId: string) => {
+    try {
+      await navigator.clipboard.writeText(content);
+      setCopiedMessageId(messageId);
+      setTimeout(() => setCopiedMessageId(null), 2000);
+    } catch (err) {
+      console.error("Failed to copy:", err);
+    }
+  };
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -374,7 +387,7 @@ export default function Chat() {
                       </div>
                     )}
                     <Card className={cn(
-                      "max-w-[80%] p-4",
+                      "max-w-[80%] p-4 relative group",
                       message.role === "user" 
                         ? "bg-indigo-600 text-white border-indigo-600" 
                         : "bg-white border-neutral-200"
@@ -384,11 +397,26 @@ export default function Chat() {
                           {message.content}
                         </pre>
                       ) : (
-                        <div className="prose prose-sm max-w-none prose-neutral">
-                          <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                            {message.content}
-                          </ReactMarkdown>
-                        </div>
+                        <>
+                          <div className="prose prose-sm max-w-none prose-neutral">
+                            <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                              {message.content}
+                            </ReactMarkdown>
+                          </div>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity h-7 w-7 p-0"
+                            onClick={() => copyToClipboard(message.content, message.id)}
+                            data-testid={`button-copy-${message.id}`}
+                          >
+                            {copiedMessageId === message.id ? (
+                              <Check className="w-3.5 h-3.5 text-green-600" />
+                            ) : (
+                              <Copy className="w-3.5 h-3.5 text-neutral-500" />
+                            )}
+                          </Button>
+                        </>
                       )}
                     </Card>
                     {message.role === "user" && (
@@ -422,9 +450,17 @@ export default function Chat() {
               {showReasoning && (
                 <aside className="hidden lg:block w-1/2 border-l border-neutral-200 bg-white overflow-y-auto p-6">
                   <div className="space-y-4">
-                    <div className="flex items-center gap-2 mb-4">
-                      <Brain className="w-5 h-5 text-indigo-600" />
-                      <h2 className="text-lg font-semibold">Reasoning Process</h2>
+                    <div className="flex items-center justify-between mb-4">
+                      <div className="flex items-center gap-2">
+                        <Brain className="w-5 h-5 text-indigo-600" />
+                        <h2 className="text-lg font-semibold">Reasoning Process</h2>
+                      </div>
+                      {tokenUsage && (tokenUsage.inputTokens > 0 || tokenUsage.outputTokens > 0) && (
+                        <div className="flex items-center gap-1 text-xs text-indigo-600 bg-indigo-50 px-2 py-1 rounded" data-testid="text-reasoning-tokens">
+                          <Zap className="w-3 h-3" />
+                          <span>{tokenUsage.inputTokens.toLocaleString()} in / {tokenUsage.outputTokens.toLocaleString()} out</span>
+                        </div>
+                      )}
                     </div>
                     
                     {(isLoading ? streamingReasoning : reasoningSteps).length === 0 && !isLoading && (

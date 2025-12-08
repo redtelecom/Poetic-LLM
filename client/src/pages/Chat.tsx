@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Slider } from "@/components/ui/slider";
 import { Sidebar } from "@/components/layout/Sidebar";
 import SettingsTab from "@/components/settings/SettingsTab";
 import ReactMarkdown from "react-markdown";
@@ -66,6 +67,7 @@ export default function Chat() {
   const [streamingReasoning, setStreamingReasoning] = useState<ReasoningStep[]>([]);
   const [tokenUsage, setTokenUsage] = useState<{ inputTokens: number; outputTokens: number } | null>(null);
   const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
+  const [computeBudget, setComputeBudget] = useState([50]);
 
   const copyToClipboard = async (content: string, messageId: string) => {
     try {
@@ -535,6 +537,21 @@ export default function Chat() {
 
             <footer className="bg-white border-t border-neutral-200 p-4 shrink-0">
               <div className="max-w-3xl mx-auto">
+                <div className="flex items-center gap-4 mb-3">
+                  <div className="flex items-center gap-2 text-sm text-neutral-600">
+                    <Zap className="w-4 h-4 text-amber-500" />
+                    <span>Compute</span>
+                  </div>
+                  <Slider 
+                    value={computeBudget} 
+                    onValueChange={setComputeBudget} 
+                    max={100} 
+                    step={1} 
+                    className="flex-1 max-w-xs"
+                    data-testid="slider-compute-budget"
+                  />
+                  <span className="text-sm font-medium text-indigo-600 w-10" data-testid="text-compute-budget">{computeBudget}%</span>
+                </div>
                 <div className="flex gap-3">
                   <Textarea
                     ref={textareaRef}

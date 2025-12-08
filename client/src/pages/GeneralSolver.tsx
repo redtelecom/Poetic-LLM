@@ -19,6 +19,7 @@ import {
 import { cn } from "@/lib/utils";
 import { toast } from "@/hooks/use-toast";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
+import { Link } from "wouter";
 import { 
   fetchConversations, 
   fetchConversation, 
@@ -287,6 +288,17 @@ export default function GeneralSolver() {
                <Brain className="w-4 h-4" />
                Solver
              </Button>
+             <Link href="/chat">
+               <Button 
+                 variant="ghost" 
+                 size="sm"
+                 className="gap-2"
+                 data-testid="button-chat-link"
+               >
+                 <MessageSquare className="w-4 h-4" />
+                 Chat
+               </Button>
+             </Link>
              <Button 
                variant={activeTab === "settings" ? "secondary" : "ghost"} 
                size="sm"

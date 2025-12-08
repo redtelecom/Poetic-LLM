@@ -158,5 +158,61 @@ export async function registerRoutes(
     }
   });
 
+  app.post("/api/conversations/:id/chat", async (req, res) => {
+    try {
+      const { message, providers } = req.body;
+      
+      if (!message || !providers) {
+        return res.status(400).json({ error: "Message and providers required" });
+      }
+
+      res.setHeader("Content-Type", "text/event-stream");
+      res.setHeader("Cache-Control", "no-cache");
+      res.setHeader("Connection", "keep-alive");
+
+      const userMessage = await storage.createMessage({
+        conversationId: req.params.id,
+        role: "user",
+        content: message,
+        metadata: null,
+      });
+
+      const existingMessages = await storage.getMessages(req.params.id);
+      
+      const conversationHistory = existingMessages.map((m) => ({
+        role: m.role as "user" | "assistant",
+        content: m.content
+      }));
+
+      const orchestrator = new PoetiqOrchestrator(providers as ProviderConfig[]);
+      let fullResponse = "";
+
+      for await (const chunk of orchestrator.chat(conversationHistory)) {
+        fullResponse += chunk;
+        res.write(`data: ${JSON.stringify({ type: "content", content: chunk })}\n\n`);
+      }
+
+      const assistantMessage = await storage.createMessage({
+        conversationId: req.params.id,
+        role: "assistant",
+        content: fullResponse,
+        metadata: { providers: providers.filter((p: ProviderConfig) => p.enabled).map((p: ProviderConfig) => p.id) },
+      });
+
+      const messages = await storage.getMessages(req.params.id);
+      if (messages.length === 2) {
+        const title = await orchestrator.generateTitle(message);
+        await storage.updateConversation(req.params.id, { title });
+      }
+
+      res.write(`data: ${JSON.stringify({ type: "done", messageId: assistantMessage.id })}\n\n`);
+      res.end();
+    } catch (error) {
+      console.error("Error in chat:", error);
+      res.write(`data: ${JSON.stringify({ type: "error", error: "Failed to process request" })}\n\n`);
+      res.end();
+    }
+  });
+
   return httpServer;
 }

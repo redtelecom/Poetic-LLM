@@ -112,6 +112,36 @@ Focus on clarity, logical progression, and actionable insights.`;
     }
   }
 
+  async* chat(
+    messages: Array<{ role: "user" | "assistant" | "system"; content: string }>
+  ): AsyncGenerator<string> {
+    const enabledProviders = this.providers.filter(p => p.enabled);
+    
+    if (enabledProviders.length === 0) {
+      yield "Error: No LLM providers enabled. Please enable at least one provider in settings.";
+      return;
+    }
+
+    const provider = enabledProviders[0];
+    
+    const systemMessage = {
+      role: "system" as const,
+      content: "You are a helpful AI assistant. Provide clear, thoughtful responses."
+    };
+    
+    const fullMessages = [systemMessage, ...messages];
+
+    if (provider.id === "openai") {
+      for await (const chunk of streamOpenAI(provider.model, fullMessages)) {
+        yield chunk;
+      }
+    } else if (provider.id === "anthropic") {
+      for await (const chunk of streamAnthropic(provider.model, fullMessages)) {
+        yield chunk;
+      }
+    }
+  }
+
   async generateTitle(firstMessage: string): Promise<string> {
     const provider = this.providers[0];
     if (!provider) return "New Conversation";

@@ -2,86 +2,109 @@ import React from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { 
-  CheckCircle2, 
   Settings2, 
   ShieldCheck, 
   Cpu,
   Zap,
-  Box
+  Box,
+  Layers,
+  Info
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "@/hooks/use-toast";
 
-interface ModelOption {
+interface ProviderConfig {
   id: string;
   name: string;
-  provider: string;
-  contextWindow: string;
-  inputCost: string;
-  outputCost: string;
-  description: string;
-  recommended?: boolean;
+  isEnabled: boolean;
+  selectedModel: string;
+  models: { id: string; name: string; cost: string }[];
 }
 
-const AVAILABLE_MODELS: ModelOption[] = [
+const PROVIDERS: ProviderConfig[] = [
   {
-    id: "gpt-4o",
-    name: "GPT-4o",
-    provider: "OpenAI",
-    contextWindow: "128k",
-    inputCost: "$5.00",
-    outputCost: "$15.00",
-    description: "Most capable model, best for complex reasoning and coding tasks.",
-    recommended: true
+    id: "openai",
+    name: "OpenAI",
+    isEnabled: true,
+    selectedModel: "gpt-4o",
+    models: [
+      { id: "gpt-4o", name: "GPT-4o", cost: "$5.00/1M" },
+      { id: "gpt-4-turbo", name: "GPT-4 Turbo", cost: "$10.00/1M" },
+      { id: "gpt-3.5-turbo", name: "GPT-3.5 Turbo", cost: "$0.50/1M" },
+    ]
   },
   {
-    id: "claude-3-5-sonnet",
-    name: "Claude 3.5 Sonnet",
-    provider: "Anthropic",
-    contextWindow: "200k",
-    inputCost: "$3.00",
-    outputCost: "$15.00",
-    description: "Excellent at nuanced writing and code generation with lower latency."
+    id: "anthropic",
+    name: "Anthropic",
+    isEnabled: true,
+    selectedModel: "claude-3-5-sonnet",
+    models: [
+      { id: "claude-3-5-sonnet", name: "Claude 3.5 Sonnet", cost: "$3.00/1M" },
+      { id: "claude-3-opus", name: "Claude 3 Opus", cost: "$15.00/1M" },
+      { id: "claude-3-haiku", name: "Claude 3 Haiku", cost: "$0.25/1M" },
+    ]
   },
   {
-    id: "gpt-4-turbo",
-    name: "GPT-4 Turbo",
-    provider: "OpenAI",
-    contextWindow: "128k",
-    inputCost: "$10.00",
-    outputCost: "$30.00",
-    description: "Previous flagship model, reliable for varied tasks."
+    id: "google",
+    name: "Google Vertex AI",
+    isEnabled: false,
+    selectedModel: "gemini-1.5-pro",
+    models: [
+      { id: "gemini-1.5-pro", name: "Gemini 1.5 Pro", cost: "$3.50/1M" },
+      { id: "gemini-1.5-flash", name: "Gemini 1.5 Flash", cost: "$0.35/1M" },
+    ]
   },
   {
-    id: "claude-3-opus",
-    name: "Claude 3 Opus",
-    provider: "Anthropic",
-    contextWindow: "200k",
-    inputCost: "$15.00",
-    outputCost: "$75.00",
-    description: "Highest capability for open-ended research and creative writing."
+    id: "xai",
+    name: "xAI",
+    isEnabled: false,
+    selectedModel: "grok-beta",
+    models: [
+      { id: "grok-beta", name: "Grok Beta", cost: "Unknown" },
+    ]
   },
   {
-    id: "llama-3-70b",
-    name: "Llama 3 70B",
-    provider: "OpenRouter",
-    contextWindow: "8k",
-    inputCost: "$0.70",
-    outputCost: "$0.90",
-    description: "Fast, open-source alternative with strong reasoning capabilities."
+    id: "openrouter",
+    name: "OpenRouter",
+    isEnabled: false,
+    selectedModel: "llama-3-70b",
+    models: [
+      { id: "llama-3-70b", name: "Llama 3 70B", cost: "$0.70/1M" },
+      { id: "mixtral-8x22b", name: "Mixtral 8x22B", cost: "$0.90/1M" },
+    ]
   }
 ];
 
 export default function SettingsTab() {
-  const [selectedModel, setSelectedModel] = React.useState<string>("gpt-4o");
+  const [providers, setProviders] = React.useState<ProviderConfig[]>(PROVIDERS);
+
+  const handleToggleProvider = (id: string, checked: boolean) => {
+    setProviders(prev => prev.map(p => 
+      p.id === id ? { ...p, isEnabled: checked } : p
+    ));
+    if (checked) {
+      toast({
+        title: "Provider Enabled",
+        description: `${providers.find(p => p.id === id)?.name} added to reasoning pool.`,
+      });
+    }
+  };
+
+  const handleModelChange = (providerId: string, modelId: string) => {
+    setProviders(prev => prev.map(p => 
+      p.id === providerId ? { ...p, selectedModel: modelId } : p
+    ));
+  };
 
   const handleSave = () => {
+    const activeProviders = providers.filter(p => p.isEnabled);
     toast({
-      title: "Settings Saved",
-      description: `Active model updated to ${AVAILABLE_MODELS.find(m => m.id === selectedModel)?.name}`,
+      title: "Configuration Saved",
+      description: `Poetiq configured to mix ${activeProviders.length} models: ${activeProviders.map(p => p.name).join(", ")}`,
     });
   };
 
@@ -90,79 +113,94 @@ export default function SettingsTab() {
       <div className="flex flex-col gap-2">
         <h2 className="text-2xl font-bold tracking-tight text-neutral-900 flex items-center gap-2">
           <Settings2 className="w-6 h-6 text-indigo-600" />
-          System Configuration
+          Multi-Model Configuration
         </h2>
         <p className="text-neutral-500">
-          Select the frontier model to power the Poetiq reasoning engine. API keys are managed securely via Replit Secrets.
+          Poetiq uses a meta-system to orchestrate multiple LLMs simultaneously. Enable the providers you want to include in the reasoning mix.
         </p>
       </div>
 
       <div className="grid gap-6">
         <Card className="border-neutral-200 bg-white shadow-sm">
-          <CardHeader>
+          <CardHeader className="pb-4">
             <CardTitle className="flex items-center gap-2">
-              <Cpu className="w-5 h-5 text-neutral-500" />
-              Active Reasoning Model
+              <Layers className="w-5 h-5 text-neutral-500" />
+              Active Reasoning Pool
             </CardTitle>
             <CardDescription>
-              Choose which underlying LLM performs the step-by-step reasoning.
+              Select which models participate in the Poetiq orchestration layer. Using multiple high-tier models improves accuracy but increases cost.
             </CardDescription>
           </CardHeader>
-          <CardContent>
-            <RadioGroup value={selectedModel} onValueChange={setSelectedModel} className="grid gap-4">
-              {AVAILABLE_MODELS.map((model) => (
-                <div key={model.id}>
-                  <RadioGroupItem value={model.id} id={model.id} className="peer sr-only" />
-                  <Label
-                    htmlFor={model.id}
-                    className={cn(
-                      "flex flex-col gap-2 rounded-lg border-2 border-neutral-100 p-4 hover:bg-neutral-50 hover:border-neutral-200 cursor-pointer transition-all",
-                      selectedModel === model.id && "border-indigo-600 bg-indigo-50/10 hover:border-indigo-600 hover:bg-indigo-50/20 shadow-sm"
+          <CardContent className="space-y-6">
+            {providers.map((provider) => (
+              <div key={provider.id} className="flex items-start justify-between p-4 rounded-lg border border-neutral-100 bg-neutral-50/30 hover:bg-neutral-50 transition-colors">
+                <div className="flex flex-col gap-3 flex-1 mr-6">
+                  <div className="flex items-center gap-3">
+                    <Switch 
+                      id={`toggle-${provider.id}`}
+                      checked={provider.isEnabled}
+                      onCheckedChange={(checked) => handleToggleProvider(provider.id, checked)}
+                    />
+                    <Label htmlFor={`toggle-${provider.id}`} className="text-base font-semibold text-neutral-900 cursor-pointer">
+                      {provider.name}
+                    </Label>
+                    {provider.isEnabled && (
+                      <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-200 text-[10px]">
+                        Active
+                      </Badge>
                     )}
-                  >
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <span className="font-semibold text-neutral-900 text-base">{model.name}</span>
-                        <Badge variant="outline" className="text-neutral-500 font-normal">
-                          {model.provider}
-                        </Badge>
-                        {model.recommended && (
-                          <Badge className="bg-emerald-100 text-emerald-700 hover:bg-emerald-100 border-emerald-200">
-                            Recommended
-                          </Badge>
-                        )}
-                      </div>
-                      {selectedModel === model.id && (
-                        <CheckCircle2 className="w-5 h-5 text-indigo-600" />
-                      )}
+                  </div>
+                  
+                  <div className="pl-14">
+                    <div className="flex items-center gap-4">
+                      <Label className="text-xs text-neutral-500 uppercase font-medium min-w-[60px]">Model</Label>
+                      <Select 
+                        value={provider.selectedModel} 
+                        onValueChange={(val) => handleModelChange(provider.id, val)}
+                        disabled={!provider.isEnabled}
+                      >
+                        <SelectTrigger className="w-[280px] h-9 bg-white text-sm">
+                          <SelectValue placeholder="Select model" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {provider.models.map((m) => (
+                            <SelectItem key={m.id} value={m.id}>
+                              <div className="flex items-center justify-between w-full gap-4">
+                                <span>{m.name}</span>
+                                <span className="text-xs text-neutral-400 font-mono">{m.cost}</span>
+                              </div>
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                     </div>
-                    
-                    <p className="text-sm text-neutral-500 leading-relaxed">
-                      {model.description}
-                    </p>
-
-                    <div className="flex items-center gap-4 mt-2 text-xs text-neutral-400 font-mono">
-                      <div className="flex items-center gap-1">
-                        <Box className="w-3 h-3" />
-                        {model.contextWindow} ctx
-                      </div>
-                      <div className="flex items-center gap-1">
-                        <Zap className="w-3 h-3" />
-                        {model.inputCost} / 1M in
-                      </div>
-                    </div>
-                  </Label>
+                  </div>
                 </div>
-              ))}
-            </RadioGroup>
+
+                <div className="hidden sm:flex flex-col items-end gap-1 text-xs text-neutral-400 font-mono pt-1">
+                  <div className="flex items-center gap-1">
+                    <ShieldCheck className="w-3 h-3 text-neutral-300" />
+                    Secure Key
+                  </div>
+                </div>
+              </div>
+            ))}
+            
+            <div className="rounded-md bg-blue-50 p-4 border border-blue-100 flex gap-3">
+              <Info className="w-5 h-5 text-blue-600 shrink-0 mt-0.5" />
+              <div className="text-sm text-blue-900">
+                <p className="font-semibold mb-1">Poetiq Optimization Strategy</p>
+                <p className="leading-relaxed opacity-90">
+                  The system will automatically route sub-tasks to the enabled models based on their strengths (e.g., using Claude for code generation and GPT-4o for logical critique). 
+                  Disabling a provider removes it from the potential reasoning paths.
+                </p>
+              </div>
+            </div>
+
           </CardContent>
-          <CardFooter className="bg-neutral-50/50 border-t border-neutral-100 flex justify-between items-center py-4">
-             <div className="flex items-center gap-2 text-xs text-neutral-500">
-               <ShieldCheck className="w-4 h-4 text-emerald-600" />
-               Using secure credentials from Replit Secrets
-             </div>
-             <Button onClick={handleSave} className="bg-indigo-600 hover:bg-indigo-700 text-white">
-               Save Configuration
+          <CardFooter className="bg-neutral-50/50 border-t border-neutral-100 flex justify-end items-center py-4">
+             <Button onClick={handleSave} className="bg-indigo-600 hover:bg-indigo-700 text-white shadow-md shadow-indigo-200">
+               Save System Configuration
              </Button>
           </CardFooter>
         </Card>

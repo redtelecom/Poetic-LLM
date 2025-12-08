@@ -1,5 +1,6 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
+import multer from "multer";
 import { storage } from "./storage";
 import { insertConversationSchema, insertMessageSchema, insertSettingsSchema } from "@shared/schema";
 import { PoetiqOrchestrator } from "./llm/orchestrator";
@@ -242,7 +243,8 @@ export async function registerRoutes(
       }
       
       for (const m of recentMessages) {
-        const messageImages = m.metadata?.attachments?.filter((a: any) => a.type === "image");
+        const metadata = m.metadata as { attachments?: Array<{ type: string; mimeType: string; url: string }> } | null;
+        const messageImages = metadata?.attachments?.filter((a: any) => a.type === "image");
         conversationHistory.push({
           role: m.role as "user" | "assistant",
           content: m.content,
@@ -374,14 +376,30 @@ Provide a concise summary (2-3 paragraphs max):`;
     }
   });
 
-  app.post("/api/objects/upload", async (req, res) => {
+  const multerUpload = multer({ 
+    storage: multer.memoryStorage(),
+    limits: { fileSize: 10 * 1024 * 1024 }
+  });
+
+  app.post("/api/objects/upload", multerUpload.single("file"), async (req, res) => {
     try {
-      const objectStorageService = new ObjectStorageService();
-      const uploadURL = await objectStorageService.getObjectEntityUploadURL();
-      res.json({ uploadURL });
+      if (!req.file) {
+        return res.status(400).json({ error: "No file provided" });
+      }
+
+      const base64 = req.file.buffer.toString("base64");
+      const dataUrl = `data:${req.file.mimetype};base64,${base64}`;
+      const storageKey = `inline-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+
+      res.json({ 
+        storageKey,
+        url: dataUrl,
+        mimeType: req.file.mimetype,
+        size: req.file.size
+      });
     } catch (error) {
-      console.error("Error getting upload URL:", error);
-      res.status(500).json({ error: "Failed to get upload URL" });
+      console.error("Error uploading file:", error);
+      res.status(500).json({ error: "Failed to upload file" });
     }
   });
 

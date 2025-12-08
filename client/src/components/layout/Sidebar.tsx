@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Plus, MessageSquare, Search, MoreHorizontal, Trash2, Edit2 } from "lucide-react";
 import { Input } from "@/components/ui/input";
-import { Conversation } from "@/lib/conversations";
+import type { Conversation } from "@shared/schema";
 import { formatDistanceToNow } from "date-fns";
 import {
   DropdownMenu,
@@ -18,15 +18,23 @@ interface SidebarProps {
   activeId: string | null;
   onSelect: (id: string) => void;
   onNew: () => void;
+  onDelete?: (id: string) => void;
   className?: string;
 }
 
-export function Sidebar({ conversations, activeId, onSelect, onNew, className }: SidebarProps) {
+export function Sidebar({ conversations, activeId, onSelect, onNew, onDelete, className }: SidebarProps) {
   const [search, setSearch] = React.useState("");
 
   const filtered = conversations.filter(c => 
     c.title.toLowerCase().includes(search.toLowerCase())
   );
+
+  const handleDelete = (e: React.MouseEvent, id: string) => {
+    e.stopPropagation();
+    if (onDelete) {
+      onDelete(id);
+    }
+  };
 
   return (
     <div className={cn("flex flex-col h-full border-r border-neutral-200 bg-neutral-50/50", className)}>
@@ -72,7 +80,7 @@ export function Sidebar({ conversations, activeId, onSelect, onNew, className }:
                 <div className="flex flex-col overflow-hidden">
                   <span className="truncate">{conv.title}</span>
                   <span className="text-[10px] text-neutral-400 font-normal truncate">
-                    {formatDistanceToNow(conv.updatedAt, { addSuffix: true })}
+                    {formatDistanceToNow(new Date(conv.updatedAt), { addSuffix: true })}
                   </span>
                 </div>
               </div>
@@ -87,7 +95,10 @@ export function Sidebar({ conversations, activeId, onSelect, onNew, className }:
                   <DropdownMenuItem className="gap-2 text-xs">
                     <Edit2 className="w-3 h-3" /> Rename
                   </DropdownMenuItem>
-                  <DropdownMenuItem className="gap-2 text-xs text-red-600 focus:text-red-700 focus:bg-red-50">
+                  <DropdownMenuItem 
+                    className="gap-2 text-xs text-red-600 focus:text-red-700 focus:bg-red-50"
+                    onClick={(e) => handleDelete(e, conv.id)}
+                  >
                     <Trash2 className="w-3 h-3" /> Delete
                   </DropdownMenuItem>
                 </DropdownMenuContent>

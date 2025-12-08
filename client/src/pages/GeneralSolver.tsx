@@ -1,13 +1,11 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Slider } from "@/components/ui/slider";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import SettingsTab from "@/components/settings/SettingsTab";
 import { Sidebar } from "@/components/layout/Sidebar";
-import { MOCK_CONVERSATIONS, Conversation } from "@/lib/conversations";
 import { 
   Brain, 
   Sparkles, 
@@ -15,40 +13,100 @@ import {
   CheckCircle2, 
   Loader2, 
   Zap, 
-  FileText,
   Settings2,
-  ChevronDown,
   Menu
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "@/hooks/use-toast";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
+import { 
+  fetchConversations, 
+  fetchConversation, 
+  createConversation, 
+  deleteConversation,
+  solveTask,
+  fetchSettings,
+  type ProviderConfig 
+} from "@/lib/api";
+import type { Conversation, Message } from "@shared/schema";
 
-// Mock reasoning steps for visualization
-const MOCK_REASONING_STEPS = [
-  { id: 1, type: "plan", content: "Analyzing request and decomposing into sub-tasks...", status: "pending" },
-  { id: 2, type: "thought", content: "Identifying key constraints and required knowledge...", status: "pending" },
-  { id: 3, type: "search", content: "Retrieving relevant context from knowledge base...", status: "pending" },
-  { id: 4, type: "draft", content: "Generating initial solution hypothesis...", status: "pending" },
-  { id: 5, type: "critique", content: "Verifying logical consistency and edge cases...", status: "pending" },
-  { id: 6, type: "refine", content: "Refining output based on critique...", status: "pending" },
-  { id: 7, type: "final", content: "Formatting final response...", status: "pending" },
-];
+interface ReasoningStep {
+  id: number;
+  provider: string;
+  model: string;
+  action: string;
+  content: string;
+  status: "pending" | "active" | "completed";
+}
 
 export default function GeneralSolver() {
   const [activeTab, setActiveTab] = useState("solver");
   const [prompt, setPrompt] = useState("");
   const [isProcessing, setIsProcessing] = useState(false);
   const [progress, setProgress] = useState(0);
-  const [activeStep, setActiveStep] = useState(0);
-  const [completedSteps, setCompletedSteps] = useState<number[]>([]);
+  const [reasoningSteps, setReasoningSteps] = useState<ReasoningStep[]>([]);
   const [result, setResult] = useState<string | null>(null);
   const [computeBudget, setComputeBudget] = useState([50]);
   const [expandedSteps, setExpandedSteps] = useState<number[]>([]);
   
-  // Sidebar state
-  const [conversations, setConversations] = useState<Conversation[]>(MOCK_CONVERSATIONS);
-  const [activeConversationId, setActiveConversationId] = useState<string | null>(MOCK_CONVERSATIONS[0].id);
+  const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [providers, setProviders] = useState<ProviderConfig[]>([
+    { id: "openai", name: "OpenAI", enabled: true, model: "gpt-5" },
+    { id: "anthropic", name: "Anthropic", enabled: true, model: "claude-sonnet-4-5" }
+  ]);
+
+  useEffect(() => {
+    loadConversations();
+    loadSettings();
+  }, []);
+
+  const loadConversations = async () => {
+    try {
+      const convs = await fetchConversations();
+      setConversations(convs);
+      if (convs.length > 0 && !activeConversationId) {
+        setActiveConversationId(convs[0].id);
+        loadConversation(convs[0].id);
+      }
+    } catch (error) {
+      console.error("Failed to load conversations:", error);
+    }
+  };
+
+  const loadConversation = async (id: string) => {
+    try {
+      const { conversation, messages: msgs } = await fetchConversation(id);
+      setMessages(msgs);
+      
+      const lastUserMessage = msgs.filter(m => m.role === "user").pop();
+      const lastAssistantMessage = msgs.filter(m => m.role === "assistant").pop();
+      
+      if (lastUserMessage && !isProcessing) {
+        setPrompt(lastUserMessage.content);
+      }
+      
+      if (lastAssistantMessage) {
+        setResult(lastAssistantMessage.content);
+      } else {
+        setResult(null);
+      }
+    } catch (error) {
+      console.error("Failed to load conversation:", error);
+    }
+  };
+
+  const loadSettings = async () => {
+    try {
+      const settings = await fetchSettings();
+      if (settings.providers && Array.isArray(settings.providers)) {
+        setProviders(settings.providers as ProviderConfig[]);
+      }
+    } catch (error) {
+      console.error("Failed to load settings:", error);
+    }
+  };
 
   const toggleStep = (id: number) => {
     setExpandedSteps(prev => 
@@ -56,40 +114,52 @@ export default function GeneralSolver() {
     );
   };
 
-  const handleNewConversation = () => {
-    const newId = `conv_${Date.now()}`;
-    const newConv: Conversation = {
-      id: newId,
-      title: "New Task",
-      updatedAt: Date.now(),
-      messages: []
-    };
-    setConversations([newConv, ...conversations]);
-    setActiveConversationId(newId);
-    setPrompt("");
-    setResult(null);
-    setCompletedSteps([]);
-    setActiveStep(0);
-    setActiveTab("solver");
+  const handleNewConversation = async () => {
+    try {
+      const newConv = await createConversation("New Task");
+      setConversations([newConv, ...conversations]);
+      setActiveConversationId(newConv.id);
+      setPrompt("");
+      setResult(null);
+      setReasoningSteps([]);
+      setMessages([]);
+      setActiveTab("solver");
+    } catch (error) {
+      console.error("Failed to create conversation:", error);
+      toast({
+        title: "Error",
+        description: "Failed to create new conversation",
+        variant: "destructive"
+      });
+    }
   };
 
   const handleSelectConversation = (id: string) => {
     setActiveConversationId(id);
-    const conv = conversations.find(c => c.id === id);
-    if (conv) {
-       // Restore state (mock)
-       if (conv.messages.length > 0) {
-         setResult("Restored conversation content...");
-         setPrompt(conv.messages[0].content);
-       } else {
-         setResult(null);
-         setPrompt("");
-       }
-    }
+    loadConversation(id);
     setActiveTab("solver");
+    setReasoningSteps([]);
   };
 
-  const handleRun = () => {
+  const handleDeleteConversation = async (id: string) => {
+    try {
+      await deleteConversation(id);
+      setConversations(conversations.filter(c => c.id !== id));
+      if (activeConversationId === id) {
+        const remaining = conversations.filter(c => c.id !== id);
+        if (remaining.length > 0) {
+          setActiveConversationId(remaining[0].id);
+          loadConversation(remaining[0].id);
+        } else {
+          handleNewConversation();
+        }
+      }
+    } catch (error) {
+      console.error("Failed to delete conversation:", error);
+    }
+  };
+
+  const handleRun = async () => {
     if (!prompt.trim()) {
       toast({
         title: "Input required",
@@ -99,54 +169,90 @@ export default function GeneralSolver() {
       return;
     }
 
+    const enabledProviders = providers.filter(p => p.enabled);
+    if (enabledProviders.length === 0) {
+      toast({
+        title: "No providers enabled",
+        description: "Please enable at least one LLM provider in settings.",
+        variant: "destructive"
+      });
+      setActiveTab("settings");
+      return;
+    }
+
+    if (!activeConversationId) {
+      await handleNewConversation();
+      return;
+    }
+
     setIsProcessing(true);
     setProgress(0);
-    setActiveStep(1);
-    setCompletedSteps([]);
+    setReasoningSteps([]);
     setResult(null);
 
-    // Simulate the reasoning process
-    let currentStep = 1;
-    const interval = setInterval(() => {
-      if (currentStep > MOCK_REASONING_STEPS.length) {
-        clearInterval(interval);
-        setIsProcessing(false);
-        setResult(`Here is the result for your request: "${prompt.substring(0, 30)}..."\n\nBased on the iterative reasoning process, I have arrived at the following solution:\n\n1. First, I analyzed the core requirements.\n2. I identified potential edge cases regarding user input.\n3. The optimal approach involves a hybrid strategy.\n\nFinal Conclusion:\nThe solution requires balancing the compute budget with the desired accuracy depth. By applying the Poetiq meta-reasoning layer, we improved the zero-shot performance by approximately 45%.`);
-        toast({
-          title: "Reasoning Complete",
-          description: "The system has finished processing your request.",
-        });
-        return;
-      }
+    let responseText = "";
+    let stepCounter = 0;
 
-      setCompletedSteps(prev => [...prev, currentStep]);
-      setActiveStep(currentStep + 1);
-      setProgress((currentStep / MOCK_REASONING_STEPS.length) * 100);
-      currentStep++;
-    }, 1500); // 1.5s per step
+    try {
+      for await (const event of solveTask(activeConversationId, prompt, providers)) {
+        if (event.type === "content") {
+          responseText += event.content;
+          setResult(responseText);
+        } else if (event.type === "reasoning_step" && event.step) {
+          stepCounter++;
+          const newStep: ReasoningStep = {
+            id: stepCounter,
+            provider: event.step.provider,
+            model: event.step.model,
+            action: event.step.action,
+            content: event.step.content,
+            status: "completed"
+          };
+          setReasoningSteps(prev => [...prev, newStep]);
+          setProgress(Math.min((stepCounter / 7) * 100, 95));
+        } else if (event.type === "done") {
+          setProgress(100);
+          setIsProcessing(false);
+          await loadConversations();
+          toast({
+            title: "Reasoning Complete",
+            description: "The system has finished processing your request.",
+          });
+        } else if (event.type === "error") {
+          throw new Error(event.error || "Unknown error");
+        }
+      }
+    } catch (error) {
+      console.error("Error during solve:", error);
+      setIsProcessing(false);
+      toast({
+        title: "Error",
+        description: "Failed to process request. Please try again.",
+        variant: "destructive"
+      });
+    }
   };
+
+  const activeConversation = conversations.find(c => c.id === activeConversationId);
 
   return (
     <div className="min-h-screen bg-neutral-50 font-sans text-neutral-900 flex overflow-hidden">
-      {/* Sidebar for Desktop */}
       <div className="hidden lg:block w-72 h-screen sticky top-0">
         <Sidebar 
           conversations={conversations}
           activeId={activeConversationId}
           onSelect={handleSelectConversation}
           onNew={handleNewConversation}
+          onDelete={handleDeleteConversation}
         />
       </div>
 
-      {/* Main Content Area */}
       <div className="flex-1 flex flex-col h-screen overflow-hidden">
-        {/* Header */}
         <header className="bg-white border-b border-neutral-200 px-6 py-4 flex items-center justify-between shrink-0">
           <div className="flex items-center gap-3">
-             {/* Mobile Sidebar Trigger */}
              <Sheet>
                <SheetTrigger asChild>
-                 <Button variant="ghost" size="icon" className="lg:hidden -ml-2">
+                 <Button variant="ghost" size="icon" className="lg:hidden -ml-2" data-testid="button-mobile-menu">
                    <Menu className="w-5 h-5" />
                  </Button>
                </SheetTrigger>
@@ -156,6 +262,7 @@ export default function GeneralSolver() {
                     activeId={activeConversationId}
                     onSelect={handleSelectConversation}
                     onNew={handleNewConversation}
+                    onDelete={handleDeleteConversation}
                   />
                </SheetContent>
              </Sheet>
@@ -163,7 +270,7 @@ export default function GeneralSolver() {
             <div className="w-8 h-8 bg-indigo-600 rounded-md flex items-center justify-center text-white font-bold text-lg">
               P
             </div>
-            <h1 className="text-xl font-bold tracking-tight">Poetiq Solver</h1>
+            <h1 className="text-xl font-bold tracking-tight" data-testid="text-app-title">Poetiq Solver</h1>
             <Badge variant="secondary" className="bg-indigo-50 text-indigo-700 border-indigo-200">
               Beta
             </Badge>
@@ -175,6 +282,7 @@ export default function GeneralSolver() {
                size="sm"
                onClick={() => setActiveTab("solver")}
                className="gap-2"
+               data-testid="button-solver-tab"
              >
                <Brain className="w-4 h-4" />
                Solver
@@ -184,6 +292,7 @@ export default function GeneralSolver() {
                size="sm"
                onClick={() => setActiveTab("settings")}
                className="gap-2"
+               data-testid="button-settings-tab"
              >
                <Settings2 className="w-4 h-4" />
                Settings
@@ -191,14 +300,12 @@ export default function GeneralSolver() {
           </div>
         </header>
 
-        {/* Scrollable Main Content */}
         <main className="flex-1 p-6 overflow-y-auto">
           <div className="max-w-7xl mx-auto w-full">
             {activeTab === "settings" ? (
-              <SettingsTab />
+              <SettingsTab providers={providers} onProvidersChange={setProviders} />
             ) : (
               <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 pb-20">
-                {/* Left Column: Input & Configuration */}
                 <div className="lg:col-span-4 flex flex-col gap-6">
                   <Card className="border-neutral-200 shadow-sm bg-white">
                     <CardHeader className="pb-3">
@@ -216,6 +323,7 @@ export default function GeneralSolver() {
                         className="min-h-[150px] resize-none text-base focus-visible:ring-indigo-500"
                         value={prompt}
                         onChange={(e) => setPrompt(e.target.value)}
+                        data-testid="input-task-prompt"
                       />
                       
                       <div className="space-y-4 pt-2">
@@ -224,7 +332,7 @@ export default function GeneralSolver() {
                             <Zap className="w-4 h-4 text-amber-500" />
                             Compute Budget
                           </label>
-                          <span className="text-sm text-neutral-500">{computeBudget}%</span>
+                          <span className="text-sm text-neutral-500" data-testid="text-compute-budget">{computeBudget}%</span>
                         </div>
                         <Slider 
                           value={computeBudget} 
@@ -244,6 +352,7 @@ export default function GeneralSolver() {
                         size="lg"
                         onClick={handleRun}
                         disabled={isProcessing}
+                        data-testid="button-start-reasoning"
                       >
                         {isProcessing ? (
                           <>
@@ -264,39 +373,38 @@ export default function GeneralSolver() {
                     <CardHeader className="pb-3">
                       <CardTitle className="text-sm font-medium text-neutral-600 flex items-center gap-2">
                         <Settings2 className="w-4 h-4" />
-                        System Configuration
+                        Active Configuration
                       </CardTitle>
                     </CardHeader>
                     <CardContent className="space-y-4">
-                      <div className="grid grid-cols-2 gap-3">
-                        <div className="p-3 bg-white rounded-md border border-neutral-200 text-center">
-                          <div className="text-xs text-neutral-500 uppercase font-semibold mb-1">Model</div>
-                          <div className="font-medium text-neutral-900">GPT-4o</div>
-                        </div>
-                        <div className="p-3 bg-white rounded-md border border-neutral-200 text-center">
-                          <div className="text-xs text-neutral-500 uppercase font-semibold mb-1">Method</div>
-                          <div className="font-medium text-neutral-900">Tree-of-Thought</div>
-                        </div>
-                      </div>
                       <div className="p-3 bg-white rounded-md border border-neutral-200">
                          <div className="flex items-center justify-between mb-2">
-                           <span className="text-sm font-medium">Active Modules</span>
-                           <Badge variant="outline" className="text-xs">3 Enabled</Badge>
+                           <span className="text-sm font-medium">Enabled Providers</span>
+                           <Badge variant="outline" className="text-xs" data-testid="badge-enabled-count">
+                             {providers.filter(p => p.enabled).length} Active
+                           </Badge>
                          </div>
                          <div className="flex gap-2 flex-wrap">
-                           <Badge variant="secondary" className="bg-blue-50 text-blue-700 hover:bg-blue-100">Code Verifier</Badge>
-                           <Badge variant="secondary" className="bg-emerald-50 text-emerald-700 hover:bg-emerald-100">Logic Check</Badge>
-                           <Badge variant="secondary" className="bg-purple-50 text-purple-700 hover:bg-purple-100">Web Search</Badge>
+                           {providers.filter(p => p.enabled).map(p => (
+                             <Badge 
+                               key={p.id} 
+                               variant="secondary" 
+                               className="bg-blue-50 text-blue-700 hover:bg-blue-100"
+                               data-testid={`badge-provider-${p.id}`}
+                             >
+                               {p.name}: {p.model}
+                             </Badge>
+                           ))}
+                           {providers.filter(p => p.enabled).length === 0 && (
+                             <span className="text-sm text-neutral-500">No providers enabled</span>
+                           )}
                          </div>
                       </div>
                     </CardContent>
                   </Card>
                 </div>
 
-                {/* Right Column: Visualization & Output */}
                 <div className="lg:col-span-8 flex flex-col gap-6">
-                  
-                  {/* Reasoning Chain Visualization */}
                   <Card className={cn("border-neutral-200 shadow-sm transition-all duration-500 bg-white", isProcessing ? "ring-2 ring-indigo-500/20" : "")}>
                     <CardHeader className="pb-4 border-b border-neutral-100">
                       <div className="flex items-center justify-between">
@@ -307,88 +415,51 @@ export default function GeneralSolver() {
                         {isProcessing && (
                            <div className="flex items-center gap-2 text-sm text-indigo-600 font-medium animate-pulse">
                              <Loader2 className="w-4 h-4 animate-spin" />
-                             Processing Step {activeStep}/{MOCK_REASONING_STEPS.length}
+                             Processing...
                            </div>
                         )}
                       </div>
                     </CardHeader>
                     <CardContent className="p-0">
                       <div className="max-h-[400px] overflow-y-auto custom-scrollbar p-6 space-y-6 bg-neutral-50/30">
-                        {MOCK_REASONING_STEPS.map((step, index) => {
-                          const isActive = step.id === activeStep;
-                          const isCompleted = completedSteps.includes(step.id);
-                          const isPending = !isActive && !isCompleted;
+                        {reasoningSteps.length === 0 && !isProcessing && (
+                          <div className="text-center py-12 text-neutral-400">
+                            <Brain className="w-12 h-12 mx-auto mb-3 opacity-50" />
+                            <p>Reasoning steps will appear here during processing</p>
+                          </div>
+                        )}
+                        {reasoningSteps.map((step, index) => {
                           const isExpanded = expandedSteps.includes(step.id);
 
                           return (
                             <div 
                               key={step.id} 
-                              className={cn(
-                                "relative pl-8 transition-all duration-500",
-                                isPending ? "opacity-40 grayscale" : "opacity-100"
-                              )}
+                              className="relative pl-8 transition-all duration-500"
+                              data-testid={`reasoning-step-${step.id}`}
                             >
-                              {/* Timeline Line */}
-                              {index !== MOCK_REASONING_STEPS.length - 1 && (
-                                <div className={cn(
-                                  "absolute left-[11px] top-6 w-[2px] h-[calc(100%+24px)] bg-neutral-200",
-                                  isCompleted ? "bg-indigo-200" : ""
-                                )} />
+                              {index !== reasoningSteps.length - 1 && (
+                                <div className="absolute left-[11px] top-6 w-[2px] h-[calc(100%+24px)] bg-indigo-200" />
                               )}
 
-                              {/* Status Icon */}
-                              <div className={cn(
-                                "absolute left-0 top-0 w-6 h-6 rounded-full border-2 flex items-center justify-center z-10 bg-white transition-colors duration-300",
-                                isActive ? "border-indigo-600 text-indigo-600 scale-110 shadow-indigo-100 shadow-lg" : 
-                                isCompleted ? "border-indigo-600 bg-indigo-600 text-white" : 
-                                "border-neutral-300 text-neutral-300"
-                              )}>
-                                {isCompleted ? <CheckCircle2 className="w-4 h-4" /> : 
-                                 isActive ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> :
-                                 <span className="text-[10px] font-bold">{step.id}</span>}
+                              <div className="absolute left-0 top-0 w-6 h-6 rounded-full border-2 flex items-center justify-center z-10 bg-white border-indigo-600 bg-indigo-600 text-white">
+                                <CheckCircle2 className="w-4 h-4" />
                               </div>
 
-                              {/* Content Card */}
-                              <div 
-                                className={cn(
-                                  "rounded-lg border bg-white p-3 transition-all duration-300 hover:shadow-md cursor-pointer",
-                                  isActive ? "border-indigo-500 shadow-md ring-1 ring-indigo-500/10" : "border-neutral-200"
-                                )}
-                                onClick={() => toggleStep(step.id)}
-                              >
-                                <div className="flex items-start justify-between">
-                                  <div>
+                              <div className="bg-white p-4 rounded-lg border border-neutral-200 shadow-sm hover:shadow-md transition-shadow">
+                                <div className="flex items-start justify-between gap-3 mb-2">
+                                  <div className="flex-1">
                                     <div className="flex items-center gap-2 mb-1">
-                                      <span className={cn(
-                                        "text-xs font-bold uppercase tracking-wider px-2 py-0.5 rounded-full border",
-                                        step.type === 'plan' ? "bg-blue-50 text-blue-700 border-blue-200" :
-                                        step.type === 'thought' ? "bg-amber-50 text-amber-700 border-amber-200" :
-                                        step.type === 'search' ? "bg-purple-50 text-purple-700 border-purple-200" :
-                                        step.type === 'critique' ? "bg-red-50 text-red-700 border-red-200" :
-                                        "bg-neutral-100 text-neutral-600 border-neutral-200"
-                                      )}>
-                                        {step.type}
-                                      </span>
-                                      <span className="text-xs text-neutral-400 font-mono">
-                                        {isCompleted ? "245ms" : isActive ? "Running..." : "Pending"}
-                                      </span>
+                                      <Badge className="text-[10px] bg-indigo-100 text-indigo-700 border-indigo-200">
+                                        {step.provider}
+                                      </Badge>
+                                      <Badge variant="outline" className="text-[10px]">
+                                        {step.action}
+                                      </Badge>
                                     </div>
-                                    <p className="text-sm font-medium text-neutral-800">{step.content}</p>
+                                    <p className="text-sm text-neutral-700 font-medium">{step.content}</p>
+                                    <p className="text-xs text-neutral-500 mt-1">Model: {step.model}</p>
                                   </div>
-                                  {isCompleted && (
-                                     <ChevronDown className={cn("w-4 h-4 text-neutral-400 transition-transform", isExpanded ? "rotate-180" : "")} />
-                                  )}
                                 </div>
-                                
-                                {/* Expandable Details */}
-                                {isExpanded && isCompleted && (
-                                  <div className="mt-3 pt-3 border-t border-neutral-100 text-xs text-neutral-600 font-mono bg-neutral-50 rounded p-2">
-                                    <p>{`> Executing module: ${step.type}_v2`}</p>
-                                    <p>{`> Context window: 45% used`}</p>
-                                    <p>{`> Confidence score: 0.92`}</p>
-                                    <p className="text-emerald-600">{`> Step verification passed`}</p>
-                                  </div>
-                                )}
                               </div>
                             </div>
                           );
@@ -397,38 +468,21 @@ export default function GeneralSolver() {
                     </CardContent>
                   </Card>
 
-                  {/* Final Output */}
-                  <div className="flex-1">
-                     <Card className={cn("h-full border-neutral-200 shadow-md transition-opacity duration-500 bg-white", result ? "opacity-100" : "opacity-50 grayscale")}>
-                       <CardHeader className="bg-neutral-50/80 border-b border-neutral-100 py-3">
-                         <div className="flex items-center justify-between">
-                           <CardTitle className="text-base flex items-center gap-2">
-                             <FileText className="w-4 h-4 text-neutral-500" />
-                             Final Solution
-                           </CardTitle>
-                           {result && (
-                             <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-200 flex items-center gap-1">
-                               <CheckCircle2 className="w-3 h-3" />
-                               Verified
-                             </Badge>
-                           )}
-                         </div>
-                       </CardHeader>
-                       <CardContent className="p-6">
-                         {result ? (
-                           <div className="prose prose-sm max-w-none text-neutral-800">
-                             <p className="whitespace-pre-line leading-relaxed">{result}</p>
-                           </div>
-                         ) : (
-                           <div className="h-40 flex flex-col items-center justify-center text-neutral-400 gap-3">
-                             <Brain className="w-12 h-12 opacity-20" />
-                             <p>Output will appear here after reasoning is complete</p>
-                           </div>
-                         )}
-                       </CardContent>
-                     </Card>
-                  </div>
-
+                  {result && (
+                    <Card className="border-neutral-200 shadow-sm bg-white">
+                      <CardHeader className="pb-3 border-b border-neutral-100">
+                        <CardTitle className="flex items-center gap-2 text-lg">
+                          <Sparkles className="w-5 h-5 text-emerald-600" />
+                          Solution
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent className="pt-4">
+                        <div className="prose prose-sm max-w-none" data-testid="text-solution">
+                          <pre className="whitespace-pre-wrap text-neutral-800 leading-relaxed">{result}</pre>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  )}
                 </div>
               </div>
             )}

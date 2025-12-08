@@ -76,26 +76,18 @@ export async function registerRoutes(
       const orchestrator = new PoetiqOrchestrator(providers as ProviderConfig[]);
       let fullResponse = "";
       let stepNumber = 0;
-
-      const tempMessageId = "temp-" + Date.now();
+      const pendingSteps: Array<{ provider: string; model: string; action: string; content: string; stepNumber: number }> = [];
       
       for await (const chunk of orchestrator.solveTask(
         message,
-        async (step) => {
+        (step) => {
           stepNumber++;
+          const stepData = { ...step, stepNumber };
+          pendingSteps.push(stepData);
           res.write(`data: ${JSON.stringify({ 
             type: "reasoning_step", 
-            step: { ...step, stepNumber } 
+            step: stepData 
           })}\n\n`);
-          
-          await storage.createReasoningStep({
-            messageId: tempMessageId,
-            stepNumber,
-            provider: step.provider,
-            model: step.model,
-            action: step.action,
-            content: step.content,
-          });
         }
       )) {
         fullResponse += chunk;
@@ -109,8 +101,7 @@ export async function registerRoutes(
         metadata: { providers: providers.filter((p: ProviderConfig) => p.enabled).map((p: ProviderConfig) => p.id) },
       });
 
-      const reasoningSteps = await storage.getReasoningSteps(tempMessageId);
-      for (const step of reasoningSteps) {
+      for (const step of pendingSteps) {
         await storage.createReasoningStep({
           messageId: assistantMessage.id,
           stepNumber: step.stepNumber,

@@ -50,6 +50,20 @@ Preferred communication style: Simple, everyday language.
 - `messages`: Contains individual messages within conversations with role (user/assistant), content, and metadata
 - `reasoning_steps`: Tracks individual reasoning steps with provider information, model used, action type, and step number
 - `settings`: Stores user configuration for AI providers (enabled state, selected models)
+- `conversation_summaries`: Stores rolling summaries of conversation history for context management
+
+### Context Management (Chat Mode)
+
+**Sliding Window + Rolling Summary**:
+- Sliding window: Only the last 10 messages are sent to the LLM to stay within token limits
+- Rolling summaries: Every 6 turns (12 messages), older messages are summarized and stored
+- Summary content: Includes user goals, key decisions, important context, and open questions
+- Integration: When a summary exists, it's prepended as a system message before the sliding window messages
+
+**Trigger Logic**:
+- Summaries are only generated when conversation exceeds the sliding window size (10 messages)
+- Turn counting: A turn = 1 user message + 1 assistant message (2 messages total)
+- Summary triggers every 6 turns after the previous summary point
 
 **Database Access Pattern**: The storage layer is abstracted through an IStorage interface, implemented by PostgresStorage. This abstraction allows for easier testing and potential future storage backend changes.
 

@@ -116,9 +116,18 @@ export default function Chat() {
             provider: s.provider,
             model: s.model,
             action: s.action,
-            content: s.content
+            content: s.content,
+            tokenUsage: (s.inputTokens || s.outputTokens) ? {
+              inputTokens: s.inputTokens || 0,
+              outputTokens: s.outputTokens || 0
+            } : undefined
           }));
           setReasoningSteps(formattedSteps);
+          
+          const metadata = lastAssistantMessage.metadata as any;
+          if (metadata?.tokenUsage) {
+            setTokenUsage(metadata.tokenUsage);
+          }
         } catch (err) {
           setReasoningSteps([]);
         }

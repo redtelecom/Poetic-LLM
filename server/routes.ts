@@ -153,6 +153,8 @@ export async function registerRoutes(
           model: step.model,
           action: step.action,
           content: step.content,
+          inputTokens: step.tokenUsage?.inputTokens ?? null,
+          outputTokens: step.tokenUsage?.outputTokens ?? null,
         });
       }
 
@@ -248,7 +250,7 @@ export async function registerRoutes(
       const orchestrator = new PoetiqOrchestrator(providers as ProviderConfig[]);
       let fullResponse = "";
       let stepNumber = 0;
-      const pendingSteps: Array<{ provider: string; model: string; action: string; content: string; stepNumber: number }> = [];
+      const pendingSteps: Array<{ provider: string; model: string; action: string; content: string; stepNumber: number; tokenUsage?: { inputTokens: number; outputTokens: number } }> = [];
       let tokenUsage: TokenUsage = { inputTokens: 0, outputTokens: 0 };
 
       const contextPrompt = conversationHistory.length > 1 
@@ -312,6 +314,8 @@ export async function registerRoutes(
           model: step.model,
           action: step.action,
           content: step.content,
+          inputTokens: step.tokenUsage?.inputTokens ?? null,
+          outputTokens: step.tokenUsage?.outputTokens ?? null,
         });
       }
 

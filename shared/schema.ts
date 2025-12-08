@@ -27,6 +27,8 @@ export const reasoningSteps = pgTable("reasoning_steps", {
   model: varchar("model", { length: 100 }).notNull(),
   action: varchar("action", { length: 50 }).notNull(),
   content: text("content").notNull(),
+  inputTokens: integer("input_tokens"),
+  outputTokens: integer("output_tokens"),
   timestamp: timestamp("timestamp").defaultNow().notNull(),
 });
 

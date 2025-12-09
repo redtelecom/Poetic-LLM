@@ -50,3 +50,22 @@ export interface ExpertStreamEvent {
   result?: ExpertResult;
   consensus?: ConsensusResult;
 }
+
+export interface QuantPipelineResult {
+  providerId: string;
+  providerName: string;
+  model: string;
+  strategyPlan: string;
+  pineScriptCode: string;
+  success: boolean;
+  usage: { inputTokens: number; outputTokens: number };
+  validation: {
+    hasPineCodeBlock: boolean;
+    hasVersionDirective: boolean;
+    hasStrategyEntry: boolean;
+    hasStrategyExit: boolean;
+    isIndicator: boolean;
+    score: number;
+  };
+  error?: string;
+}

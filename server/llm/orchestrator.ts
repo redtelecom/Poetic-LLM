@@ -6,7 +6,7 @@ import * as os from "os";
 import { ExpertRunner } from "./expertRunner";
 import { TaskRouter } from "./taskRouter";
 import { ExactMatchAggregator, SemanticAggregator, canonicalizeAnswer, extractFinalAnswer } from "./consensus";
-import type { ExpertConfig, ExpertResult, ConsensusResult, ConsensusMode, TaskType } from "./types";
+import type { ExpertConfig, ExpertResult, ConsensusResult, ConsensusMode, TaskType, QuantPipelineResult } from "./types";
 
 export class PoetiqOrchestrator {
   private providers: ProviderConfig[];
@@ -170,30 +170,8 @@ export class PoetiqOrchestrator {
       .join("\n");
   }
 
-  async* solveQuantTask(
-    userPrompt: string | MessageContent[],
-    onReasoningStep?: (step: ReasoningStep) => void,
-    onTokenUsage?: (usage: TokenUsage) => void
-  ): AsyncGenerator<string> {
-    const enabledProviders = this.providers.filter(p => p.enabled);
-    
-    if (enabledProviders.length === 0) {
-      yield "Error: No LLM providers enabled. Please enable at least one provider in settings.";
-      return;
-    }
-
-    const primaryProvider = enabledProviders[0];
-    const userText = this.extractUserPromptText(userPrompt);
-    let accumulatedUsage = { inputTokens: 0, outputTokens: 0 };
-
-    onReasoningStep?.({
-      provider: "orchestrator",
-      model: "quant-solver",
-      action: "analyze",
-      content: `Starting Quant Solver pipeline with ${primaryProvider.name}`,
-    });
-
-    const analystSystemPrompt = `You are a Senior Quant Analyst specializing in algorithmic trading strategies. 
+  private getQuantAnalystPrompt(): string {
+    return `You are a Senior Quant Analyst specializing in algorithmic trading strategies. 
 
 Your task is to analyze the user's trading strategy request. Do NOT write any code yet.
 
@@ -221,54 +199,10 @@ Instead, output a structured "Strategy Plan" that includes:
 - Market condition dependencies
 
 Be thorough and specific. This plan will be used to implement the Pine Script code.`;
+  }
 
-    onReasoningStep?.({
-      provider: primaryProvider.id,
-      model: primaryProvider.model,
-      action: "think",
-      content: "Step 1: Analyst generating Strategy Plan...",
-    });
-
-    yield "## Strategy Analysis\n\n";
-
-    const analystMessages: MessageContent[] = [
-      { role: "system", content: analystSystemPrompt },
-      { role: "user", content: userText }
-    ];
-
-    let strategyPlan = "";
-    let analystUsage = { inputTokens: 0, outputTokens: 0 };
-    const handleAnalystUsage = (u: { inputTokens: number; outputTokens: number }) => {
-      analystUsage = u;
-    };
-
-    if (primaryProvider.id === "openai") {
-      for await (const chunk of streamOpenAI(primaryProvider.model, analystMessages, handleAnalystUsage)) {
-        strategyPlan += chunk;
-        yield chunk;
-      }
-    } else if (primaryProvider.id === "anthropic") {
-      for await (const chunk of streamAnthropic(primaryProvider.model, analystMessages, handleAnalystUsage)) {
-        strategyPlan += chunk;
-        yield chunk;
-      }
-    }
-
-    accumulatedUsage.inputTokens += analystUsage.inputTokens;
-    accumulatedUsage.outputTokens += analystUsage.outputTokens;
-    onTokenUsage?.(accumulatedUsage);
-
-    onReasoningStep?.({
-      provider: primaryProvider.id,
-      model: primaryProvider.model,
-      action: "verify",
-      content: "Strategy Plan completed. Proceeding to code generation...",
-      tokenUsage: { inputTokens: accumulatedUsage.inputTokens, outputTokens: accumulatedUsage.outputTokens },
-    });
-
-    yield "\n\n---\n\n";
-
-    const coderSystemPrompt = `You are a Lead Pine Script Developer for TradingView. 
+  private getQuantCoderPrompt(): string {
+    return `You are a Lead Pine Script Developer for TradingView. 
 
 Implement the following strategy in strict Pine Script V6.
 
@@ -283,10 +217,350 @@ Requirements:
 8. Include user-configurable inputs with sensible defaults
 
 Output ONLY the Pine Script code wrapped in a \`\`\`pine code block.`;
+  }
+
+  private validatePineScript(pineScriptCode: string): {
+    hasPineCodeBlock: boolean;
+    hasVersionDirective: boolean;
+    hasStrategyEntry: boolean;
+    hasStrategyExit: boolean;
+    isIndicator: boolean;
+    score: number;
+  } {
+    const hasPineCodeBlock = pineScriptCode.includes("```pine") || pineScriptCode.includes("```pinescript");
+    const hasVersionDirective = pineScriptCode.includes("//@version=6");
+    const isIndicator = pineScriptCode.includes("indicator(");
+    const hasStrategyEntry = pineScriptCode.includes("strategy.entry");
+    const hasStrategyExit = pineScriptCode.includes("strategy.exit");
+    
+    let score = 0;
+    if (hasPineCodeBlock) score += 2;
+    if (hasVersionDirective) score += 2;
+    if (isIndicator || (hasStrategyEntry && hasStrategyExit)) score += 3;
+    if (hasStrategyEntry) score += 1;
+    if (hasStrategyExit) score += 1;
+    if (pineScriptCode.includes("input.")) score += 1;
+
+    return { hasPineCodeBlock, hasVersionDirective, hasStrategyEntry, hasStrategyExit, isIndicator, score };
+  }
+
+  private async runQuantPipelineForProvider(
+    provider: ProviderConfig,
+    userText: string,
+    onReasoningStep?: (step: ReasoningStep) => void
+  ): Promise<QuantPipelineResult> {
+    let accumulatedUsage = { inputTokens: 0, outputTokens: 0 };
+
+    try {
+      onReasoningStep?.({
+        provider: provider.id,
+        model: provider.model,
+        action: "think",
+        content: `[${provider.name}] Step 1: Analyst generating Strategy Plan...`,
+      });
+
+      const analystMessages: MessageContent[] = [
+        { role: "system", content: this.getQuantAnalystPrompt() },
+        { role: "user", content: userText }
+      ];
+
+      const { content: strategyPlan, usage: analystUsage } = await this.collectStreamedResponse(provider, analystMessages);
+      accumulatedUsage.inputTokens += analystUsage.inputTokens;
+      accumulatedUsage.outputTokens += analystUsage.outputTokens;
+
+      onReasoningStep?.({
+        provider: provider.id,
+        model: provider.model,
+        action: "verify",
+        content: `[${provider.name}] Strategy Plan completed. Proceeding to code generation...`,
+        tokenUsage: { inputTokens: analystUsage.inputTokens, outputTokens: analystUsage.outputTokens },
+      });
+
+      onReasoningStep?.({
+        provider: provider.id,
+        model: provider.model,
+        action: "code",
+        content: `[${provider.name}] Step 2: Coder generating Pine Script V6...`,
+      });
+
+      const coderMessages: MessageContent[] = [
+        { role: "system", content: this.getQuantCoderPrompt() },
+        { role: "user", content: `Original Request: ${userText}\n\nStrategy Plan:\n${strategyPlan}` }
+      ];
+
+      const { content: pineScriptCode, usage: coderUsage } = await this.collectStreamedResponse(provider, coderMessages);
+      accumulatedUsage.inputTokens += coderUsage.inputTokens;
+      accumulatedUsage.outputTokens += coderUsage.outputTokens;
+
+      const validation = this.validatePineScript(pineScriptCode);
+
+      onReasoningStep?.({
+        provider: provider.id,
+        model: provider.model,
+        action: "verify",
+        content: `[${provider.name}] Pine Script generated. Score: ${validation.score}/10. V6: ${validation.hasVersionDirective ? "✓" : "✗"}, Strategy functions: ${validation.isIndicator || (validation.hasStrategyEntry && validation.hasStrategyExit) ? "✓" : "✗"}`,
+        tokenUsage: { inputTokens: coderUsage.inputTokens, outputTokens: coderUsage.outputTokens },
+      });
+
+      return {
+        providerId: provider.id,
+        providerName: provider.name,
+        model: provider.model,
+        strategyPlan,
+        pineScriptCode,
+        success: true,
+        usage: accumulatedUsage,
+        validation,
+      };
+    } catch (error: any) {
+      onReasoningStep?.({
+        provider: provider.id,
+        model: provider.model,
+        action: "error",
+        content: `[${provider.name}] Pipeline failed: ${error.message}`,
+      });
+
+      return {
+        providerId: provider.id,
+        providerName: provider.name,
+        model: provider.model,
+        strategyPlan: "",
+        pineScriptCode: "",
+        success: false,
+        usage: accumulatedUsage,
+        validation: { hasPineCodeBlock: false, hasVersionDirective: false, hasStrategyEntry: false, hasStrategyExit: false, isIndicator: false, score: 0 },
+        error: error.message,
+      };
+    }
+  }
+
+  private selectBestQuantResult(results: QuantPipelineResult[]): QuantPipelineResult {
+    const successfulResults = results.filter(r => r.success);
+    if (successfulResults.length === 0) {
+      return results[0];
+    }
+    if (successfulResults.length === 1) {
+      return successfulResults[0];
+    }
+    return successfulResults.sort((a, b) => b.validation.score - a.validation.score)[0];
+  }
+
+  async* solveQuantTask(
+    userPrompt: string | MessageContent[],
+    onReasoningStep?: (step: ReasoningStep) => void,
+    onTokenUsage?: (usage: TokenUsage) => void
+  ): AsyncGenerator<string> {
+    const enabledProviders = this.providers.filter(p => p.enabled);
+    
+    if (enabledProviders.length === 0) {
+      yield "Error: No LLM providers enabled. Please enable at least one provider in settings.";
+      return;
+    }
+
+    const userText = this.extractUserPromptText(userPrompt);
+
+    if (enabledProviders.length === 1) {
+      yield* this.solveQuantTaskSingleProvider(enabledProviders[0], userText, onReasoningStep, onTokenUsage);
+      return;
+    }
 
     onReasoningStep?.({
-      provider: primaryProvider.id,
-      model: primaryProvider.model,
+      provider: "orchestrator",
+      model: "quant-solver",
+      action: "analyze",
+      content: `Starting Multi-Model Quant Solver with ${enabledProviders.length} providers in parallel`,
+    });
+
+    yield `*Running Quant Solver pipeline across ${enabledProviders.length} AI models in parallel...*\n\n`;
+
+    for (const provider of enabledProviders) {
+      onReasoningStep?.({
+        provider: provider.id,
+        model: provider.model,
+        action: "think",
+        content: `[${provider.name}] Starting Quant pipeline...`,
+      });
+    }
+
+    const pipelinePromises = enabledProviders.map(provider => 
+      this.runQuantPipelineForProvider(provider, userText, onReasoningStep)
+    );
+
+    const results: QuantPipelineResult[] = await Promise.all(pipelinePromises);
+
+    let totalUsage = { inputTokens: 0, outputTokens: 0 };
+    for (const result of results) {
+      totalUsage.inputTokens += result.usage.inputTokens;
+      totalUsage.outputTokens += result.usage.outputTokens;
+    }
+    onTokenUsage?.(totalUsage);
+
+    const successfulResults = results.filter(r => r.success);
+
+    if (successfulResults.length === 0) {
+      onReasoningStep?.({
+        provider: "orchestrator",
+        model: "quant-solver",
+        action: "fail",
+        content: "All providers failed to generate Pine Script.",
+      });
+      yield "All AI models failed to generate Pine Script code. Please try again or rephrase your request.";
+      return;
+    }
+
+    onReasoningStep?.({
+      provider: "orchestrator",
+      model: "consensus-engine",
+      action: "think",
+      content: `Evaluating ${successfulResults.length} Pine Script outputs for quality...`,
+    });
+
+    const bestResult = this.selectBestQuantResult(results);
+    const agreementCount = successfulResults.filter(r => r.validation.score === bestResult.validation.score).length;
+    const agreementPercent = Math.round((agreementCount / successfulResults.length) * 100);
+
+    onReasoningStep?.({
+      provider: "orchestrator",
+      model: "consensus-engine",
+      action: "complete",
+      content: `Best result from ${bestResult.providerName} (score: ${bestResult.validation.score}/10, ${agreementPercent}% quality agreement)`,
+    });
+
+    if (successfulResults.length > 1) {
+      const scoreComparison = successfulResults.map(r => `${r.providerName}: ${r.validation.score}/10`).join(", ");
+      yield `**Multi-Model Consensus:** Selected ${bestResult.providerName} output (${scoreComparison})\n\n---\n\n`;
+    }
+
+    yield "## Strategy Analysis\n\n";
+    for await (const chunk of this.yieldBufferedContent(bestResult.strategyPlan)) {
+      yield chunk;
+    }
+
+    yield "\n\n---\n\n## Pine Script V6 Implementation\n\n";
+    for await (const chunk of this.yieldBufferedContent(bestResult.pineScriptCode)) {
+      yield chunk;
+    }
+
+    const validation = bestResult.validation;
+    const validationIssues: string[] = [];
+    if (!validation.hasPineCodeBlock) validationIssues.push("Missing ```pine code block");
+    if (!validation.hasVersionDirective) validationIssues.push("Missing //@version=6 directive");
+    if (!validation.isIndicator && !validation.hasStrategyEntry) validationIssues.push("Missing strategy.entry()");
+    if (!validation.isIndicator && !validation.hasStrategyExit) validationIssues.push("Missing strategy.exit()");
+
+    if (validationIssues.length > 0) {
+      yield `\n\n> **Validation Notes**: ${validationIssues.join(", ")}. Please verify and correct before using in TradingView.\n`;
+    }
+
+    onReasoningStep?.({
+      provider: "orchestrator",
+      model: "quant-solver",
+      action: "think",
+      content: "Step 3: Guide generating testing instructions...",
+    });
+
+    const guideContent = `
+
+---
+
+## How to Test & Iterate
+
+1. **Copy to TradingView**: Open TradingView, go to Pine Editor, and paste the code above.
+
+2. **Add to Chart**: Click "Add to Chart" to apply the strategy/indicator.
+
+3. **Open Strategy Tester**: Click on the "Strategy Tester" tab at the bottom to see performance metrics.
+
+4. **Key Metrics to Monitor**:
+   - **Profit Factor**: Should be > 1.5 for a viable strategy
+   - **Max Drawdown**: Target < 15% for conservative risk management
+   - **Win Rate**: Compare with your risk/reward ratio
+   - **Total Trades**: Ensure sufficient sample size (50+ trades minimum)
+
+5. **Iterate & Improve**: If your Max Drawdown exceeds 15%, paste the Strategy Tester results here, and I will adjust the risk management parameters (stop loss, position sizing, or entry filters).
+
+6. **Backtest Different Timeframes**: Test on multiple timeframes (1H, 4H, 1D) to validate robustness.
+
+7. **Forward Test**: Paper trade for at least 2-4 weeks before live deployment.
+`;
+
+    for await (const chunk of this.yieldBufferedContent(guideContent)) {
+      yield chunk;
+    }
+
+    onReasoningStep?.({
+      provider: "orchestrator",
+      model: "quant-solver",
+      action: "complete",
+      content: `Quant Solver completed. Best output from ${bestResult.providerName}.`,
+      tokenUsage: totalUsage,
+    });
+  }
+
+  private async* solveQuantTaskSingleProvider(
+    provider: ProviderConfig,
+    userText: string,
+    onReasoningStep?: (step: ReasoningStep) => void,
+    onTokenUsage?: (usage: TokenUsage) => void
+  ): AsyncGenerator<string> {
+    let accumulatedUsage = { inputTokens: 0, outputTokens: 0 };
+
+    onReasoningStep?.({
+      provider: "orchestrator",
+      model: "quant-solver",
+      action: "analyze",
+      content: `Starting Quant Solver pipeline with ${provider.name}`,
+    });
+
+    onReasoningStep?.({
+      provider: provider.id,
+      model: provider.model,
+      action: "think",
+      content: "Step 1: Analyst generating Strategy Plan...",
+    });
+
+    yield "## Strategy Analysis\n\n";
+
+    const analystMessages: MessageContent[] = [
+      { role: "system", content: this.getQuantAnalystPrompt() },
+      { role: "user", content: userText }
+    ];
+
+    let strategyPlan = "";
+    let analystUsage = { inputTokens: 0, outputTokens: 0 };
+    const handleAnalystUsage = (u: { inputTokens: number; outputTokens: number }) => {
+      analystUsage = u;
+    };
+
+    if (provider.id === "openai") {
+      for await (const chunk of streamOpenAI(provider.model, analystMessages, handleAnalystUsage)) {
+        strategyPlan += chunk;
+        yield chunk;
+      }
+    } else if (provider.id === "anthropic") {
+      for await (const chunk of streamAnthropic(provider.model, analystMessages, handleAnalystUsage)) {
+        strategyPlan += chunk;
+        yield chunk;
+      }
+    }
+
+    accumulatedUsage.inputTokens += analystUsage.inputTokens;
+    accumulatedUsage.outputTokens += analystUsage.outputTokens;
+    onTokenUsage?.(accumulatedUsage);
+
+    onReasoningStep?.({
+      provider: provider.id,
+      model: provider.model,
+      action: "verify",
+      content: "Strategy Plan completed. Proceeding to code generation...",
+      tokenUsage: { inputTokens: accumulatedUsage.inputTokens, outputTokens: accumulatedUsage.outputTokens },
+    });
+
+    yield "\n\n---\n\n";
+
+    onReasoningStep?.({
+      provider: provider.id,
+      model: provider.model,
       action: "code",
       content: "Step 2: Coder generating Pine Script V6...",
     });
@@ -294,7 +568,7 @@ Output ONLY the Pine Script code wrapped in a \`\`\`pine code block.`;
     yield "## Pine Script V6 Implementation\n\n";
 
     const coderMessages: MessageContent[] = [
-      { role: "system", content: coderSystemPrompt },
+      { role: "system", content: this.getQuantCoderPrompt() },
       { role: "user", content: `Original Request: ${userText}\n\nStrategy Plan:\n${strategyPlan}` }
     ];
 
@@ -304,13 +578,13 @@ Output ONLY the Pine Script code wrapped in a \`\`\`pine code block.`;
       coderUsage = u;
     };
 
-    if (primaryProvider.id === "openai") {
-      for await (const chunk of streamOpenAI(primaryProvider.model, coderMessages, handleCoderUsage)) {
+    if (provider.id === "openai") {
+      for await (const chunk of streamOpenAI(provider.model, coderMessages, handleCoderUsage)) {
         pineScriptCode += chunk;
         yield chunk;
       }
-    } else if (primaryProvider.id === "anthropic") {
-      for await (const chunk of streamAnthropic(primaryProvider.model, coderMessages, handleCoderUsage)) {
+    } else if (provider.id === "anthropic") {
+      for await (const chunk of streamAnthropic(provider.model, coderMessages, handleCoderUsage)) {
         pineScriptCode += chunk;
         yield chunk;
       }
@@ -320,29 +594,23 @@ Output ONLY the Pine Script code wrapped in a \`\`\`pine code block.`;
     accumulatedUsage.outputTokens += coderUsage.outputTokens;
     onTokenUsage?.(accumulatedUsage);
 
-    const hasPineCodeBlock = pineScriptCode.includes("```pine") || pineScriptCode.includes("```pinescript");
-    const hasVersionDirective = pineScriptCode.includes("//@version=6");
-    const isIndicator = pineScriptCode.includes("indicator(");
-    const hasStrategyEntry = pineScriptCode.includes("strategy.entry");
-    const hasStrategyExit = pineScriptCode.includes("strategy.exit");
-    const hasValidStrategyFunctions = isIndicator || (hasStrategyEntry && hasStrategyExit);
+    const validation = this.validatePineScript(pineScriptCode);
 
     const validationIssues: string[] = [];
-    if (!hasPineCodeBlock) validationIssues.push("Missing ```pine code block");
-    if (!hasVersionDirective) validationIssues.push("Missing //@version=6 directive");
-    if (!isIndicator && !hasStrategyEntry) validationIssues.push("Missing strategy.entry()");
-    if (!isIndicator && !hasStrategyExit) validationIssues.push("Missing strategy.exit()");
+    if (!validation.hasPineCodeBlock) validationIssues.push("Missing ```pine code block");
+    if (!validation.hasVersionDirective) validationIssues.push("Missing //@version=6 directive");
+    if (!validation.isIndicator && !validation.hasStrategyEntry) validationIssues.push("Missing strategy.entry()");
+    if (!validation.isIndicator && !validation.hasStrategyExit) validationIssues.push("Missing strategy.exit()");
 
     if (validationIssues.length > 0) {
-      const validationNote = `\n\n> **Validation Notes**: ${validationIssues.join(", ")}. Please verify and correct before using in TradingView.\n`;
-      yield validationNote;
+      yield `\n\n> **Validation Notes**: ${validationIssues.join(", ")}. Please verify and correct before using in TradingView.\n`;
     }
 
     onReasoningStep?.({
-      provider: primaryProvider.id,
-      model: primaryProvider.model,
+      provider: provider.id,
+      model: provider.model,
       action: "verify",
-      content: `Pine Script code generated. Validation: ${hasPineCodeBlock ? "✓ Code block" : "✗ No code block"}, ${hasVersionDirective ? "✓ V6 directive" : "✗ Missing V6"}, ${hasValidStrategyFunctions ? "✓ Strategy/Indicator functions" : `✗ Missing functions (entry: ${hasStrategyEntry}, exit: ${hasStrategyExit}, indicator: ${isIndicator})`}`,
+      content: `Pine Script code generated. Validation: ${validation.hasPineCodeBlock ? "✓ Code block" : "✗ No code block"}, ${validation.hasVersionDirective ? "✓ V6 directive" : "✗ Missing V6"}, ${validation.isIndicator || (validation.hasStrategyEntry && validation.hasStrategyExit) ? "✓ Strategy/Indicator functions" : `✗ Missing functions`}`,
       tokenUsage: { inputTokens: coderUsage.inputTokens, outputTokens: coderUsage.outputTokens },
     });
 

@@ -8,6 +8,11 @@ import { Sidebar } from "@/components/layout/Sidebar";
 import SettingsTab from "@/components/settings/SettingsTab";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import {
+  ResizablePanelGroup,
+  ResizablePanel,
+  ResizableHandle,
+} from "@/components/ui/resizable";
 import { 
   Send, 
   Loader2, 
@@ -385,97 +390,96 @@ export default function Chat() {
           </main>
         ) : (
           <>
-            <div className="flex-1 flex flex-col lg:flex-row overflow-hidden">
-              <main className={cn(
-                "flex-1 overflow-y-auto p-6 bg-neutral-50",
-                showReasoning && "lg:flex-[0_0_60%]"
-              )}>
-                <div className="max-w-3xl mx-auto space-y-6">
-                  {messages.length === 0 && !streamingContent && (
-                    <div className="text-center py-20 text-neutral-400">
-                      <MessageCircle className="w-16 h-16 mx-auto mb-4 opacity-50" />
-                      <h2 className="text-xl font-medium text-neutral-600 mb-2">Start a conversation</h2>
-                      <p className="text-sm">Send a message to begin chatting with the AI</p>
-                    </div>
-                  )}
-
-                  {messages.map((message) => (
-                    <div 
-                      key={message.id}
-                      className={cn(
-                        "flex gap-3",
-                        message.role === "user" ? "justify-end" : "justify-start"
-                      )}
-                      data-testid={`message-${message.id}`}
-                    >
-                      {message.role === "assistant" && (
-                        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shrink-0 shadow-sm">
-                          <Bot className="w-4 h-4 text-white" />
+            {/* Desktop: Resizable panels */}
+            <div className="hidden lg:flex flex-1">
+              <ResizablePanelGroup direction="horizontal" className="flex-1">
+                <ResizablePanel defaultSize={showReasoning ? 60 : 100} minSize={30}>
+                  <main className="h-full overflow-y-auto p-6 bg-neutral-50">
+                    <div className="max-w-4xl mx-auto space-y-6">
+                      {messages.length === 0 && !streamingContent && (
+                        <div className="text-center py-20 text-neutral-400">
+                          <MessageCircle className="w-16 h-16 mx-auto mb-4 opacity-50" />
+                          <h2 className="text-xl font-medium text-neutral-600 mb-2">Start a conversation</h2>
+                          <p className="text-sm">Send a message to begin chatting with the AI</p>
                         </div>
                       )}
-                      <div className={cn(
-                        "max-w-[85%] min-w-0 rounded-2xl relative group shadow-sm",
-                        message.role === "user" 
-                          ? "bg-indigo-600 text-white px-4 py-3" 
-                          : "bg-white border border-neutral-200 px-4 py-3"
-                      )}>
-                        {message.role === "user" ? (
-                          <div className="text-sm break-words whitespace-pre-wrap">
-                            {message.content}
-                          </div>
-                        ) : (
-                          <>
-                            <div className="prose prose-sm max-w-none prose-neutral break-words overflow-hidden [&_pre]:overflow-x-auto [&_pre]:max-w-full [&_code]:break-all [&_p]:break-words">
-                              <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                                {message.content}
-                              </ReactMarkdown>
+
+                      {messages.map((message) => (
+                        <div 
+                          key={message.id}
+                          className={cn(
+                            "flex gap-3",
+                            message.role === "user" ? "justify-end" : "justify-start"
+                          )}
+                          data-testid={`message-${message.id}`}
+                        >
+                          {message.role === "assistant" && (
+                            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shrink-0 shadow-sm mt-1">
+                              <Bot className="w-4 h-4 text-white" />
                             </div>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity h-7 w-7 p-0 bg-white/80 hover:bg-white"
-                              onClick={() => copyToClipboard(message.content, message.id)}
-                              data-testid={`button-copy-${message.id}`}
-                            >
-                              {copiedMessageId === message.id ? (
-                                <Check className="w-3.5 h-3.5 text-green-600" />
-                              ) : (
-                                <Copy className="w-3.5 h-3.5 text-neutral-500" />
-                              )}
-                            </Button>
-                          </>
-                        )}
-                      </div>
-                      {message.role === "user" && (
-                        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-neutral-400 to-neutral-600 flex items-center justify-center shrink-0 shadow-sm">
-                          <User className="w-4 h-4 text-white" />
+                          )}
+                          {message.role === "user" ? (
+                            <div className="max-w-[75%] min-w-0 rounded-2xl bg-indigo-600 text-white px-4 py-3 shadow-sm">
+                              <div className="text-sm break-words whitespace-pre-wrap">
+                                {message.content}
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="flex-1 min-w-0 relative group">
+                              <div className="prose prose-sm max-w-none prose-neutral break-words overflow-hidden [&_pre]:overflow-x-auto [&_pre]:max-w-full [&_pre]:bg-neutral-900 [&_pre]:text-neutral-100 [&_pre]:rounded-lg [&_pre]:p-4 [&_code]:break-all [&_p]:break-words">
+                                <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                                  {message.content}
+                                </ReactMarkdown>
+                              </div>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="absolute top-0 right-0 opacity-0 group-hover:opacity-100 transition-opacity h-7 w-7 p-0"
+                                onClick={() => copyToClipboard(message.content, message.id)}
+                                data-testid={`button-copy-${message.id}`}
+                              >
+                                {copiedMessageId === message.id ? (
+                                  <Check className="w-3.5 h-3.5 text-green-600" />
+                                ) : (
+                                  <Copy className="w-3.5 h-3.5 text-neutral-400" />
+                                )}
+                              </Button>
+                            </div>
+                          )}
+                          {message.role === "user" && (
+                            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-neutral-400 to-neutral-600 flex items-center justify-center shrink-0 shadow-sm">
+                              <User className="w-4 h-4 text-white" />
+                            </div>
+                          )}
+                        </div>
+                      ))}
+
+                      {streamingContent && (
+                        <div className="flex gap-3 justify-start">
+                          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shrink-0 shadow-sm mt-1">
+                            <Bot className="w-4 h-4 text-white" />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="prose prose-sm max-w-none prose-neutral break-words overflow-hidden [&_pre]:overflow-x-auto [&_pre]:max-w-full [&_pre]:bg-neutral-900 [&_pre]:text-neutral-100 [&_pre]:rounded-lg [&_pre]:p-4 [&_code]:break-all [&_p]:break-words">
+                              <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                                {streamingContent}
+                              </ReactMarkdown>
+                              <span className="inline-block w-2 h-4 bg-indigo-600 ml-1 animate-pulse rounded-sm" />
+                            </div>
+                          </div>
                         </div>
                       )}
+
+                      <div ref={messagesEndRef} />
                     </div>
-                  ))}
+                  </main>
+                </ResizablePanel>
 
-                  {streamingContent && (
-                    <div className="flex gap-3 justify-start">
-                      <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shrink-0 shadow-sm">
-                        <Bot className="w-4 h-4 text-white" />
-                      </div>
-                      <div className="max-w-[85%] min-w-0 rounded-2xl bg-white border border-neutral-200 px-4 py-3 shadow-sm">
-                        <div className="prose prose-sm max-w-none prose-neutral break-words overflow-hidden [&_pre]:overflow-x-auto [&_pre]:max-w-full [&_code]:break-all [&_p]:break-words">
-                          <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                            {streamingContent}
-                          </ReactMarkdown>
-                          <span className="inline-block w-2 h-4 bg-indigo-600 ml-1 animate-pulse rounded-sm" />
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  <div ref={messagesEndRef} />
-                </div>
-              </main>
-
-              {showReasoning && (
-                <aside className="hidden lg:block lg:flex-[0_0_40%] border-l border-neutral-200 bg-neutral-100 overflow-y-auto p-6">
+                {showReasoning && (
+                  <>
+                    <ResizableHandle withHandle className="w-2 bg-neutral-200 hover:bg-indigo-400 transition-colors" />
+                    <ResizablePanel defaultSize={40} minSize={20}>
+                      <aside className="h-full bg-neutral-100 overflow-y-auto p-6">
                   <div className="space-y-4">
                     <div className="flex items-center justify-between mb-4">
                       <div className="flex items-center gap-2">
@@ -536,15 +540,83 @@ export default function Chat() {
                     ))}
                     
                     {isLoading && streamingReasoning.length > 0 && (
-                      <div className="flex items-center gap-2 text-indigo-600 text-sm">
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                        <span>Processing...</span>
+                          <div className="flex items-center gap-2 text-indigo-600 text-sm">
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                            <span>Processing...</span>
+                          </div>
+                        )}
+                      </div>
+                    </aside>
+                  </ResizablePanel>
+                </>
+                )}
+              </ResizablePanelGroup>
+            </div>
+
+            {/* Mobile: Simple stacked layout without reasoning (hidden on lg) */}
+            <main className="flex-1 overflow-y-auto p-4 bg-neutral-50 lg:hidden">
+              <div className="space-y-4">
+                {messages.length === 0 && !streamingContent && (
+                  <div className="text-center py-20 text-neutral-400">
+                    <MessageCircle className="w-16 h-16 mx-auto mb-4 opacity-50" />
+                    <h2 className="text-xl font-medium text-neutral-600 mb-2">Start a conversation</h2>
+                    <p className="text-sm">Send a message to begin chatting with the AI</p>
+                  </div>
+                )}
+
+                {messages.map((message) => (
+                  <div 
+                    key={message.id}
+                    className={cn(
+                      "flex gap-3",
+                      message.role === "user" ? "justify-end" : "justify-start"
+                    )}
+                  >
+                    {message.role === "assistant" && (
+                      <div className="w-7 h-7 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shrink-0 shadow-sm mt-1">
+                        <Bot className="w-3.5 h-3.5 text-white" />
+                      </div>
+                    )}
+                    {message.role === "user" ? (
+                      <div className="max-w-[85%] min-w-0 rounded-2xl bg-indigo-600 text-white px-3 py-2 shadow-sm">
+                        <div className="text-sm break-words whitespace-pre-wrap">
+                          {message.content}
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex-1 min-w-0">
+                        <div className="prose prose-sm max-w-none prose-neutral break-words overflow-hidden [&_pre]:overflow-x-auto [&_pre]:max-w-full [&_pre]:bg-neutral-900 [&_pre]:text-neutral-100 [&_pre]:rounded-lg [&_pre]:p-3 [&_pre]:text-xs [&_code]:break-all [&_p]:break-words">
+                          <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                            {message.content}
+                          </ReactMarkdown>
+                        </div>
+                      </div>
+                    )}
+                    {message.role === "user" && (
+                      <div className="w-7 h-7 rounded-full bg-gradient-to-br from-neutral-400 to-neutral-600 flex items-center justify-center shrink-0 shadow-sm">
+                        <User className="w-3.5 h-3.5 text-white" />
                       </div>
                     )}
                   </div>
-                </aside>
-              )}
-            </div>
+                ))}
+
+                {streamingContent && (
+                  <div className="flex gap-3 justify-start">
+                    <div className="w-7 h-7 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shrink-0 shadow-sm mt-1">
+                      <Bot className="w-3.5 h-3.5 text-white" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="prose prose-sm max-w-none prose-neutral break-words overflow-hidden [&_pre]:overflow-x-auto [&_pre]:max-w-full [&_pre]:bg-neutral-900 [&_pre]:text-neutral-100 [&_pre]:rounded-lg [&_pre]:p-3 [&_pre]:text-xs [&_code]:break-all [&_p]:break-words">
+                        <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                          {streamingContent}
+                        </ReactMarkdown>
+                        <span className="inline-block w-2 h-4 bg-indigo-600 ml-1 animate-pulse rounded-sm" />
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </main>
 
             <footer className="bg-white border-t border-neutral-200 p-4 shrink-0">
               <div className="max-w-3xl mx-auto">

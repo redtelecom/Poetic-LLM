@@ -121,11 +121,279 @@ export class PoetiqOrchestrator {
     }
   }
 
+  private isQuantTask(userPrompt: string | MessageContent[]): boolean {
+    const keywords = ["tradingview", "pine script", "pinescript", "strategy", "backtest", "indicator"];
+    let textToCheck = "";
+    
+    if (typeof userPrompt === "string") {
+      textToCheck = userPrompt.toLowerCase();
+    } else {
+      textToCheck = userPrompt
+        .filter(m => m.role === "user")
+        .map(m => {
+          if (typeof m.content === "string") {
+            return m.content;
+          }
+          return JSON.stringify(m.content);
+        })
+        .join(" ")
+        .toLowerCase();
+    }
+    
+    return keywords.some(keyword => textToCheck.includes(keyword));
+  }
+
+  private extractUserPromptText(userPrompt: string | MessageContent[]): string {
+    if (typeof userPrompt === "string") {
+      return userPrompt;
+    }
+    return userPrompt
+      .filter(m => m.role === "user")
+      .map(m => {
+        if (typeof m.content === "string") {
+          return m.content;
+        }
+        return JSON.stringify(m.content);
+      })
+      .join("\n");
+  }
+
+  async* solveQuantTask(
+    userPrompt: string | MessageContent[],
+    onReasoningStep?: (step: ReasoningStep) => void,
+    onTokenUsage?: (usage: TokenUsage) => void
+  ): AsyncGenerator<string> {
+    const enabledProviders = this.providers.filter(p => p.enabled);
+    
+    if (enabledProviders.length === 0) {
+      yield "Error: No LLM providers enabled. Please enable at least one provider in settings.";
+      return;
+    }
+
+    const primaryProvider = enabledProviders[0];
+    const userText = this.extractUserPromptText(userPrompt);
+    let accumulatedUsage = { inputTokens: 0, outputTokens: 0 };
+
+    onReasoningStep?.({
+      provider: "orchestrator",
+      model: "quant-solver",
+      action: "analyze",
+      content: `Starting Quant Solver pipeline with ${primaryProvider.name}`,
+    });
+
+    // Step 1: Analyst - Strategy Planning
+    const analystSystemPrompt = `You are a Senior Quant Analyst specializing in algorithmic trading strategies. 
+
+Your task is to analyze the user's trading strategy request. Do NOT write any code yet.
+
+Instead, output a structured "Strategy Plan" that includes:
+
+## Strategy Plan
+
+### 1. Entry Conditions
+- Define precise conditions for entering long/short positions
+- Specify the indicators or price action patterns to use
+
+### 2. Exit Conditions  
+- Define conditions for closing positions (take profit, stop loss triggers)
+- Specify trailing stop logic if applicable
+
+### 3. Risk Management
+- Stop Loss (SL): Define the stop loss method and level
+- Take Profit (TP): Define the take profit method and level
+- Position sizing considerations
+
+### 4. Potential Pitfalls
+- Identify repainting risks (using future data)
+- Lookahead bias concerns
+- Overfitting risks
+- Market condition dependencies
+
+Be thorough and specific. This plan will be used to implement the Pine Script code.`;
+
+    onReasoningStep?.({
+      provider: primaryProvider.id,
+      model: primaryProvider.model,
+      action: "think",
+      content: "Step 1: Analyst generating Strategy Plan...",
+    });
+
+    yield "## Strategy Analysis\n\n";
+
+    const analystMessages: MessageContent[] = [
+      { role: "system", content: analystSystemPrompt },
+      { role: "user", content: userText }
+    ];
+
+    let strategyPlan = "";
+    let analystUsage = { inputTokens: 0, outputTokens: 0 };
+    const handleAnalystUsage = (u: { inputTokens: number; outputTokens: number }) => {
+      analystUsage = u;
+    };
+
+    if (primaryProvider.id === "openai") {
+      for await (const chunk of streamOpenAI(primaryProvider.model, analystMessages, handleAnalystUsage)) {
+        strategyPlan += chunk;
+        yield chunk;
+      }
+    } else if (primaryProvider.id === "anthropic") {
+      for await (const chunk of streamAnthropic(primaryProvider.model, analystMessages, handleAnalystUsage)) {
+        strategyPlan += chunk;
+        yield chunk;
+      }
+    }
+
+    accumulatedUsage.inputTokens += analystUsage.inputTokens;
+    accumulatedUsage.outputTokens += analystUsage.outputTokens;
+    onTokenUsage?.(accumulatedUsage);
+
+    onReasoningStep?.({
+      provider: primaryProvider.id,
+      model: primaryProvider.model,
+      action: "verify",
+      content: "Strategy Plan completed. Proceeding to code generation...",
+      tokenUsage: { inputTokens: accumulatedUsage.inputTokens, outputTokens: accumulatedUsage.outputTokens },
+    });
+
+    yield "\n\n---\n\n";
+
+    // Step 2: Coder - Pine Script Implementation
+    const coderSystemPrompt = `You are a Lead Pine Script Developer for TradingView. 
+
+Implement the following strategy in strict Pine Script V6.
+
+Requirements:
+1. Use //@version=6 at the top
+2. Use strategy() function for strategy scripts or indicator() for indicators
+3. Use strategy.entry() and strategy.exit() for trade management
+4. Include proper guard clauses (e.g., barstate.isconfirmed to avoid repainting)
+5. Add robust error handling and input validation
+6. Comment EVERY logic block explaining what it does
+7. Use meaningful variable names
+8. Include user-configurable inputs with sensible defaults
+
+Output ONLY the Pine Script code wrapped in a \`\`\`pine code block.`;
+
+    onReasoningStep?.({
+      provider: primaryProvider.id,
+      model: primaryProvider.model,
+      action: "code",
+      content: "Step 2: Coder generating Pine Script V6...",
+    });
+
+    yield "## Pine Script V6 Implementation\n\n";
+
+    const coderMessages: MessageContent[] = [
+      { role: "system", content: coderSystemPrompt },
+      { role: "user", content: `Original Request: ${userText}\n\nStrategy Plan:\n${strategyPlan}` }
+    ];
+
+    let pineScriptCode = "";
+    let coderUsage = { inputTokens: 0, outputTokens: 0 };
+    const handleCoderUsage = (u: { inputTokens: number; outputTokens: number }) => {
+      coderUsage = u;
+    };
+
+    if (primaryProvider.id === "openai") {
+      for await (const chunk of streamOpenAI(primaryProvider.model, coderMessages, handleCoderUsage)) {
+        pineScriptCode += chunk;
+        yield chunk;
+      }
+    } else if (primaryProvider.id === "anthropic") {
+      for await (const chunk of streamAnthropic(primaryProvider.model, coderMessages, handleCoderUsage)) {
+        pineScriptCode += chunk;
+        yield chunk;
+      }
+    }
+
+    accumulatedUsage.inputTokens += coderUsage.inputTokens;
+    accumulatedUsage.outputTokens += coderUsage.outputTokens;
+    onTokenUsage?.(accumulatedUsage);
+
+    // Validate Pine Script V6 output
+    const hasPineCodeBlock = pineScriptCode.includes("```pine") || pineScriptCode.includes("```pinescript");
+    const hasVersionDirective = pineScriptCode.includes("//@version=6");
+    const isIndicator = pineScriptCode.includes("indicator(");
+    const hasStrategyEntry = pineScriptCode.includes("strategy.entry");
+    const hasStrategyExit = pineScriptCode.includes("strategy.exit");
+    const hasValidStrategyFunctions = isIndicator || (hasStrategyEntry && hasStrategyExit);
+
+    const validationIssues: string[] = [];
+    if (!hasPineCodeBlock) validationIssues.push("Missing ```pine code block");
+    if (!hasVersionDirective) validationIssues.push("Missing //@version=6 directive");
+    if (!isIndicator && !hasStrategyEntry) validationIssues.push("Missing strategy.entry()");
+    if (!isIndicator && !hasStrategyExit) validationIssues.push("Missing strategy.exit()");
+
+    if (validationIssues.length > 0) {
+      const validationNote = `\n\n> **Validation Notes**: ${validationIssues.join(", ")}. Please verify and correct before using in TradingView.\n`;
+      yield validationNote;
+    }
+
+    onReasoningStep?.({
+      provider: primaryProvider.id,
+      model: primaryProvider.model,
+      action: "verify",
+      content: `Pine Script code generated. Validation: ${hasPineCodeBlock ? "✓ Code block" : "✗ No code block"}, ${hasVersionDirective ? "✓ V6 directive" : "✗ Missing V6"}, ${hasValidStrategyFunctions ? "✓ Strategy/Indicator functions" : `✗ Missing functions (entry: ${hasStrategyEntry}, exit: ${hasStrategyExit}, indicator: ${isIndicator})`}`,
+      tokenUsage: { inputTokens: coderUsage.inputTokens, outputTokens: coderUsage.outputTokens },
+    });
+
+    // Step 3: Guide - Testing Instructions
+    onReasoningStep?.({
+      provider: "orchestrator",
+      model: "quant-solver",
+      action: "think",
+      content: "Step 3: Guide generating testing instructions...",
+    });
+
+    const guideContent = `
+
+---
+
+## How to Test & Iterate
+
+1. **Copy to TradingView**: Open TradingView, go to Pine Editor, and paste the code above.
+
+2. **Add to Chart**: Click "Add to Chart" to apply the strategy/indicator.
+
+3. **Open Strategy Tester**: Click on the "Strategy Tester" tab at the bottom to see performance metrics.
+
+4. **Key Metrics to Monitor**:
+   - **Profit Factor**: Should be > 1.5 for a viable strategy
+   - **Max Drawdown**: Target < 15% for conservative risk management
+   - **Win Rate**: Compare with your risk/reward ratio
+   - **Total Trades**: Ensure sufficient sample size (50+ trades minimum)
+
+5. **Iterate & Improve**: If your Max Drawdown exceeds 15%, paste the Strategy Tester results here, and I will adjust the risk management parameters (stop loss, position sizing, or entry filters).
+
+6. **Backtest Different Timeframes**: Test on multiple timeframes (1H, 4H, 1D) to validate robustness.
+
+7. **Forward Test**: Paper trade for at least 2-4 weeks before live deployment.
+`;
+
+    for await (const chunk of this.yieldBufferedContent(guideContent)) {
+      yield chunk;
+    }
+
+    onReasoningStep?.({
+      provider: "orchestrator",
+      model: "quant-solver",
+      action: "complete",
+      content: "Quant Solver pipeline completed successfully.",
+      tokenUsage: accumulatedUsage,
+    });
+  }
+
   async* solveTask(
     userPrompt: string | MessageContent[],
     onReasoningStep?: (step: ReasoningStep) => void,
     onTokenUsage?: (usage: TokenUsage) => void
   ): AsyncGenerator<string> {
+    // Route to Quant Solver for TradingView/Pine Script tasks
+    if (this.isQuantTask(userPrompt)) {
+      yield* this.solveQuantTask(userPrompt, onReasoningStep, onTokenUsage);
+      return;
+    }
+
     const enabledProviders = this.providers.filter(p => p.enabled);
     
     if (enabledProviders.length === 0) {

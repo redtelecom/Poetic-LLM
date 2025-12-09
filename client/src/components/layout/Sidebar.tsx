@@ -157,24 +157,24 @@ export function Sidebar({ conversations, activeId, onSelect, onNew, onDelete, on
               </div>
 
               {editingId !== conv.id && (
-                <div className="flex items-center gap-0.5 shrink-0">
+                <div className="flex items-center gap-1 shrink-0 ml-2">
                   <Button
                     variant="ghost"
                     size="icon"
-                    className="h-6 w-6 text-neutral-400 hover:text-indigo-600 hover:bg-indigo-50"
+                    className="h-7 w-7 text-neutral-500 hover:text-indigo-600 hover:bg-indigo-50 border border-transparent hover:border-indigo-200"
                     onClick={(e) => handleEditClick(e, conv)}
                     data-testid={`button-edit-${conv.id}`}
                   >
-                    <Pencil className="w-3 h-3" />
+                    <Pencil className="w-4 h-4" />
                   </Button>
                   <Button
                     variant="ghost"
                     size="icon"
-                    className="h-6 w-6 text-neutral-400 hover:text-red-600 hover:bg-red-50"
+                    className="h-7 w-7 text-neutral-500 hover:text-red-600 hover:bg-red-50 border border-transparent hover:border-red-200"
                     onClick={(e) => handleDeleteClick(e, conv.id)}
                     data-testid={`button-delete-${conv.id}`}
                   >
-                    <Trash2 className="w-3 h-3" />
+                    <Trash2 className="w-4 h-4" />
                   </Button>
                 </div>
               )}

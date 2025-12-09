@@ -393,7 +393,7 @@ export default function Chat() {
             {/* Desktop: Resizable panels */}
             <div className="hidden lg:flex flex-1 min-h-0 overflow-hidden">
               <ResizablePanelGroup direction="horizontal" className="h-full">
-                <ResizablePanel id="chat-panel" order={1} defaultSize={showReasoning ? 60 : 100} minSize={30} className="overflow-hidden">
+                <ResizablePanel id="chat-panel" order={1} defaultSize={60} minSize={30} className="overflow-hidden">
                   <main className="h-full overflow-y-auto p-6 bg-neutral-50">
                     <div className="max-w-4xl mx-auto space-y-6">
                       {messages.length === 0 && !streamingContent && (

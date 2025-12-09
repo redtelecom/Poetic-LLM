@@ -3,12 +3,24 @@ import { spawn } from "child_process";
 import * as fs from "fs";
 import * as path from "path";
 import * as os from "os";
+import { ExpertRunner } from "./expertRunner";
+import { TaskRouter } from "./taskRouter";
+import { ExactMatchAggregator, SemanticAggregator, canonicalizeAnswer, extractFinalAnswer } from "./consensus";
+import type { ExpertConfig, ExpertResult, ConsensusResult, ConsensusMode, TaskType } from "./types";
 
 export class PoetiqOrchestrator {
   private providers: ProviderConfig[];
+  private taskRouter: TaskRouter;
+  private exactAggregator: ExactMatchAggregator;
+  private semanticAggregator: SemanticAggregator;
+  private consensusMode: ConsensusMode = "auto";
 
-  constructor(providers: ProviderConfig[]) {
+  constructor(providers: ProviderConfig[], consensusMode: ConsensusMode = "auto") {
     this.providers = providers.filter(p => p.enabled);
+    this.taskRouter = new TaskRouter();
+    this.exactAggregator = new ExactMatchAggregator();
+    this.semanticAggregator = new SemanticAggregator();
+    this.consensusMode = consensusMode;
   }
 
   private async executePython(code: string): Promise<{ success: boolean; output: string }> {
@@ -181,7 +193,6 @@ export class PoetiqOrchestrator {
       content: `Starting Quant Solver pipeline with ${primaryProvider.name}`,
     });
 
-    // Step 1: Analyst - Strategy Planning
     const analystSystemPrompt = `You are a Senior Quant Analyst specializing in algorithmic trading strategies. 
 
 Your task is to analyze the user's trading strategy request. Do NOT write any code yet.
@@ -257,7 +268,6 @@ Be thorough and specific. This plan will be used to implement the Pine Script co
 
     yield "\n\n---\n\n";
 
-    // Step 2: Coder - Pine Script Implementation
     const coderSystemPrompt = `You are a Lead Pine Script Developer for TradingView. 
 
 Implement the following strategy in strict Pine Script V6.
@@ -310,7 +320,6 @@ Output ONLY the Pine Script code wrapped in a \`\`\`pine code block.`;
     accumulatedUsage.outputTokens += coderUsage.outputTokens;
     onTokenUsage?.(accumulatedUsage);
 
-    // Validate Pine Script V6 output
     const hasPineCodeBlock = pineScriptCode.includes("```pine") || pineScriptCode.includes("```pinescript");
     const hasVersionDirective = pineScriptCode.includes("//@version=6");
     const isIndicator = pineScriptCode.includes("indicator(");
@@ -337,7 +346,6 @@ Output ONLY the Pine Script code wrapped in a \`\`\`pine code block.`;
       tokenUsage: { inputTokens: coderUsage.inputTokens, outputTokens: coderUsage.outputTokens },
     });
 
-    // Step 3: Guide - Testing Instructions
     onReasoningStep?.({
       provider: "orchestrator",
       model: "quant-solver",
@@ -388,7 +396,6 @@ Output ONLY the Pine Script code wrapped in a \`\`\`pine code block.`;
     onReasoningStep?: (step: ReasoningStep) => void,
     onTokenUsage?: (usage: TokenUsage) => void
   ): AsyncGenerator<string> {
-    // Route to Quant Solver for TradingView/Pine Script tasks
     if (this.isQuantTask(userPrompt)) {
       yield* this.solveQuantTask(userPrompt, onReasoningStep, onTokenUsage);
       return;
@@ -401,6 +408,20 @@ Output ONLY the Pine Script code wrapped in a \`\`\`pine code block.`;
       return;
     }
 
+    if (enabledProviders.length === 1) {
+      yield* this.solveSingleProvider(userPrompt, enabledProviders[0], onReasoningStep, onTokenUsage);
+      return;
+    }
+
+    yield* this.solveMultiProvider(userPrompt, enabledProviders, onReasoningStep, onTokenUsage);
+  }
+
+  private async* solveSingleProvider(
+    userPrompt: string | MessageContent[],
+    provider: ProviderConfig,
+    onReasoningStep?: (step: ReasoningStep) => void,
+    onTokenUsage?: (usage: TokenUsage) => void
+  ): AsyncGenerator<string> {
     const systemPrompt = `You are a code-based reasoning engine. You must solve problems by writing Python code.
 
 Your approach:
@@ -417,7 +438,6 @@ Always provide working Python code that prints the solution.`;
       ? [{ role: "system", content: systemPrompt }, ...userPrompt]
       : [{ role: "system", content: systemPrompt }, { role: "user", content: userPrompt }];
 
-    const primaryProvider = enabledProviders[0];
     let attempts = 0;
     const maxAttempts = 5;
     let solved = false;
@@ -429,21 +449,21 @@ Always provide working Python code that prints the solution.`;
       provider: "orchestrator",
       model: "agentic-solver",
       action: "analyze",
-      content: `Starting agentic solver with ${primaryProvider.name} (max ${maxAttempts} attempts)`,
+      content: `Starting single-model solver with ${provider.name} (max ${maxAttempts} attempts)`,
     });
 
     while (attempts < maxAttempts && !solved) {
       attempts++;
 
       onReasoningStep?.({
-        provider: primaryProvider.id,
-        model: primaryProvider.model,
+        provider: provider.id,
+        model: provider.model,
         action: "think",
         content: `Attempt ${attempts}/${maxAttempts}: Generating code solution...`,
       });
 
       const { content: response, usage: stepUsage } = await this.collectStreamedResponse(
-        primaryProvider,
+        provider,
         messages
       );
 
@@ -455,8 +475,8 @@ Always provide working Python code that prints the solution.`;
 
       if (!code) {
         onReasoningStep?.({
-          provider: primaryProvider.id,
-          model: primaryProvider.model,
+          provider: provider.id,
+          model: provider.model,
           action: "error",
           content: `No Python code block found in response. Retrying...`,
           tokenUsage: stepUsage,
@@ -471,8 +491,8 @@ Always provide working Python code that prints the solution.`;
       }
 
       onReasoningStep?.({
-        provider: primaryProvider.id,
-        model: primaryProvider.model,
+        provider: provider.id,
+        model: provider.model,
         action: "code",
         content: `Extracted code:\n\`\`\`python\n${code.slice(0, 200)}${code.length > 200 ? '...' : ''}\n\`\`\``,
         tokenUsage: stepUsage,
@@ -538,6 +558,134 @@ Always provide working Python code that prints the solution.`;
     }
   }
 
+  private async* solveMultiProvider(
+    userPrompt: string | MessageContent[],
+    providers: ProviderConfig[],
+    onReasoningStep?: (step: ReasoningStep) => void,
+    onTokenUsage?: (usage: TokenUsage) => void
+  ): AsyncGenerator<string> {
+    const taskType = this.taskRouter.classifyTask(userPrompt);
+    const strategy = this.taskRouter.selectConsensusStrategy(taskType, this.consensusMode);
+
+    onReasoningStep?.({
+      provider: "orchestrator",
+      model: "multi-model-solver",
+      action: "analyze",
+      content: `Starting parallel multi-model solver with ${providers.length} providers. Task type: ${taskType}, Consensus strategy: ${strategy}`,
+    });
+
+    yield `*Running ${providers.length} AI models in parallel...*\n\n`;
+
+    const systemPrompt = `You are a code-based reasoning engine. You must solve problems by writing Python code.
+
+Your approach:
+1. Analyze the problem carefully
+2. Write Python code that solves the problem
+3. Your code MUST include print() statements to show the result
+4. Wrap your code in a \`\`\`python code block
+
+If your code fails, you will receive the error message and must fix it.
+
+Always provide working Python code that prints the solution.`;
+
+    const messages: MessageContent[] = Array.isArray(userPrompt) 
+      ? [{ role: "system", content: systemPrompt }, ...userPrompt]
+      : [{ role: "system", content: systemPrompt }, { role: "user", content: userPrompt }];
+
+    const expertConfigs: ExpertConfig[] = providers.map(p => ({
+      ...p,
+      temperature: 1.0,
+      maxRetries: 5,
+    }));
+
+    const runners = expertConfigs.map(config => new ExpertRunner(config));
+
+    for (const config of expertConfigs) {
+      onReasoningStep?.({
+        provider: config.id,
+        model: config.model,
+        action: "think",
+        content: `Expert ${config.name} starting parallel execution...`,
+      });
+    }
+
+    const runnerPromises = runners.map((runner, index) => 
+      runner.run(messages, (step) => {
+        onReasoningStep?.(step);
+      })
+    );
+
+    const results: ExpertResult[] = await Promise.all(runnerPromises);
+
+    let totalUsage = { inputTokens: 0, outputTokens: 0 };
+    for (const result of results) {
+      totalUsage.inputTokens += result.usage.inputTokens;
+      totalUsage.outputTokens += result.usage.outputTokens;
+
+      onReasoningStep?.({
+        provider: result.providerId,
+        model: result.model,
+        action: result.success ? "verify" : "error",
+        content: result.success 
+          ? `Completed in ${result.iterations} iteration(s)` 
+          : `Failed after ${result.iterations} iteration(s): ${result.error}`,
+        tokenUsage: result.usage,
+      });
+    }
+    onTokenUsage?.(totalUsage);
+
+    const successfulResults = results.filter(r => r.success);
+
+    if (successfulResults.length === 0) {
+      onReasoningStep?.({
+        provider: "orchestrator",
+        model: "multi-model-solver",
+        action: "fail",
+        content: "All experts failed to produce valid solutions.",
+      });
+
+      yield "All AI models failed to solve this problem. Please try rephrasing your question.";
+      return;
+    }
+
+    onReasoningStep?.({
+      provider: "orchestrator",
+      model: "consensus-engine",
+      action: "think",
+      content: `Running ${strategy} consensus on ${successfulResults.length} successful responses...`,
+    });
+
+    let consensus: ConsensusResult;
+    if (strategy === "exact") {
+      consensus = this.exactAggregator.aggregate(successfulResults, taskType);
+    } else {
+      consensus = this.semanticAggregator.aggregate(successfulResults, taskType);
+    }
+
+    onReasoningStep?.({
+      provider: "orchestrator",
+      model: "consensus-engine",
+      action: "complete",
+      content: `Consensus reached: ${consensus.summary} (${Math.round(consensus.agreement * 100)}% agreement)`,
+    });
+
+    yield `**Consensus (${consensus.allGroups.length === 1 ? "unanimous" : `${Math.round(consensus.agreement * 100)}% agreement`}):**\n\n`;
+
+    if (consensus.allGroups.length > 1) {
+      const contributingModels = consensus.winningGroup.responses.map(r => r.providerName).join(", ");
+      yield `*Models agreeing: ${contributingModels}*\n\n`;
+    }
+
+    for await (const chunk of this.yieldBufferedContent(consensus.winningAnswer)) {
+      yield chunk;
+    }
+
+    if (consensus.allGroups.length > 1) {
+      yield "\n\n---\n\n";
+      yield `*Alternative perspectives from ${consensus.allGroups.length - 1} other model(s) available. ${consensus.summary}*`;
+    }
+  }
+
   async* chat(
     messages: Array<{ role: "user" | "assistant" | "system"; content: string }>
   ): AsyncGenerator<string> {
@@ -548,8 +696,18 @@ Always provide working Python code that prints the solution.`;
       return;
     }
 
-    const provider = enabledProviders[0];
-    
+    if (enabledProviders.length === 1) {
+      yield* this.chatSingleProvider(messages, enabledProviders[0]);
+      return;
+    }
+
+    yield* this.chatMultiProvider(messages, enabledProviders);
+  }
+
+  private async* chatSingleProvider(
+    messages: Array<{ role: "user" | "assistant" | "system"; content: string }>,
+    provider: ProviderConfig
+  ): AsyncGenerator<string> {
     const systemMessage = {
       role: "system" as const,
       content: "You are a helpful AI assistant. Provide clear, thoughtful responses."
@@ -565,6 +723,58 @@ Always provide working Python code that prints the solution.`;
       for await (const chunk of streamAnthropic(provider.model, fullMessages)) {
         yield chunk;
       }
+    }
+  }
+
+  private async* chatMultiProvider(
+    messages: Array<{ role: "user" | "assistant" | "system"; content: string }>,
+    providers: ProviderConfig[]
+  ): AsyncGenerator<string> {
+    const lastUserMessage = messages.filter(m => m.role === "user").pop()?.content || "";
+    const taskType = this.taskRouter.classifyTask(lastUserMessage);
+    const strategy = this.taskRouter.selectConsensusStrategy(taskType, this.consensusMode);
+
+    const systemMessage = {
+      role: "system" as const,
+      content: "You are a helpful AI assistant. Provide clear, thoughtful responses."
+    };
+    const fullMessages: MessageContent[] = [systemMessage, ...messages];
+
+    const expertConfigs: ExpertConfig[] = providers.map(p => ({
+      ...p,
+      temperature: 0.7,
+      maxRetries: 1,
+    }));
+
+    const runners = expertConfigs.map(config => new ExpertRunner(config));
+
+    const runnerPromises = runners.map(runner => runner.runChat(fullMessages));
+
+    const results = await Promise.all(runnerPromises);
+
+    const successfulResults = results.filter(r => r.success && r.response);
+
+    if (successfulResults.length === 0) {
+      yield "Unable to generate a response. Please try again.";
+      return;
+    }
+
+    if (successfulResults.length === 1) {
+      for await (const chunk of this.yieldBufferedContent(successfulResults[0].response)) {
+        yield chunk;
+      }
+      return;
+    }
+
+    let consensus: ConsensusResult;
+    if (strategy === "exact") {
+      consensus = this.exactAggregator.aggregate(successfulResults, taskType);
+    } else {
+      consensus = this.semanticAggregator.aggregate(successfulResults, taskType);
+    }
+
+    for await (const chunk of this.yieldBufferedContent(consensus.winningAnswer)) {
+      yield chunk;
     }
   }
 

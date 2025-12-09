@@ -29,6 +29,16 @@ export async function deleteConversation(id: string): Promise<void> {
   if (!response.ok) throw new Error("Failed to delete conversation");
 }
 
+export async function renameConversation(id: string, title: string): Promise<Conversation> {
+  const response = await fetch(`/api/conversations/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ title }),
+  });
+  if (!response.ok) throw new Error("Failed to rename conversation");
+  return response.json();
+}
+
 export interface ProviderConfig {
   id: string;
   name: string;

@@ -73,6 +73,23 @@ export async function registerRoutes(
     }
   });
 
+  app.patch("/api/conversations/:id", async (req, res) => {
+    try {
+      const { title } = req.body;
+      if (!title || typeof title !== "string") {
+        return res.status(400).json({ error: "Title is required" });
+      }
+      const conversation = await storage.updateConversation(req.params.id, { title });
+      if (!conversation) {
+        return res.status(404).json({ error: "Conversation not found" });
+      }
+      res.json(conversation);
+    } catch (error) {
+      console.error("Error updating conversation:", error);
+      res.status(500).json({ error: "Failed to update conversation" });
+    }
+  });
+
   app.post("/api/conversations/:id/solve", async (req, res) => {
     try {
       const { message, providers } = req.body;

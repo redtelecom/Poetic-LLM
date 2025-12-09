@@ -1,17 +1,21 @@
-import React from "react";
+import React, { useState } from "react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Plus, MessageSquare, Search, MoreHorizontal, Trash2, Edit2 } from "lucide-react";
+import { Plus, MessageSquare, Search, Trash2, Pencil, Check, X } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import type { Conversation } from "@shared/schema";
 import { formatDistanceToNow } from "date-fns";
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 interface SidebarProps {
   conversations: Conversation[];
@@ -19,21 +23,51 @@ interface SidebarProps {
   onSelect: (id: string) => void;
   onNew: () => void;
   onDelete?: (id: string) => void;
+  onRename?: (id: string, newTitle: string) => void;
   className?: string;
 }
 
-export function Sidebar({ conversations, activeId, onSelect, onNew, onDelete, className }: SidebarProps) {
-  const [search, setSearch] = React.useState("");
+export function Sidebar({ conversations, activeId, onSelect, onNew, onDelete, onRename, className }: SidebarProps) {
+  const [search, setSearch] = useState("");
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editTitle, setEditTitle] = useState("");
+  const [deleteId, setDeleteId] = useState<string | null>(null);
 
   const filtered = conversations.filter(c => 
     c.title.toLowerCase().includes(search.toLowerCase())
   );
 
-  const handleDelete = (e: React.MouseEvent, id: string) => {
+  const handleDeleteClick = (e: React.MouseEvent, id: string) => {
     e.stopPropagation();
-    if (onDelete) {
-      onDelete(id);
+    setDeleteId(id);
+  };
+
+  const handleConfirmDelete = () => {
+    if (deleteId && onDelete) {
+      onDelete(deleteId);
     }
+    setDeleteId(null);
+  };
+
+  const handleEditClick = (e: React.MouseEvent, conv: Conversation) => {
+    e.stopPropagation();
+    setEditingId(conv.id);
+    setEditTitle(conv.title);
+  };
+
+  const handleSaveEdit = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (editingId && onRename && editTitle.trim()) {
+      onRename(editingId, editTitle.trim());
+    }
+    setEditingId(null);
+    setEditTitle("");
+  };
+
+  const handleCancelEdit = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setEditingId(null);
+    setEditTitle("");
   };
 
   return (
@@ -70,39 +104,80 @@ export function Sidebar({ conversations, activeId, onSelect, onNew, onDelete, cl
                 "group flex items-center justify-between rounded-md p-2 text-sm transition-all hover:bg-neutral-200/50 cursor-pointer border border-transparent",
                 activeId === conv.id ? "bg-white border-neutral-200 shadow-sm text-neutral-900 font-medium" : "text-neutral-600"
               )}
-              onClick={() => onSelect(conv.id)}
+              onClick={() => editingId !== conv.id && onSelect(conv.id)}
+              data-testid={`sidebar-conversation-${conv.id}`}
             >
-              <div className="flex items-center gap-3 overflow-hidden">
+              <div className="flex items-center gap-3 overflow-hidden flex-1 min-w-0">
                 <MessageSquare className={cn(
                   "w-4 h-4 shrink-0",
                   activeId === conv.id ? "text-indigo-600" : "text-neutral-400"
                 )} />
-                <div className="flex flex-col overflow-hidden">
-                  <span className="truncate">{conv.title}</span>
-                  <span className="text-[10px] text-neutral-400 font-normal truncate">
-                    {formatDistanceToNow(new Date(conv.updatedAt), { addSuffix: true })}
-                  </span>
+                <div className="flex flex-col overflow-hidden flex-1 min-w-0">
+                  {editingId === conv.id ? (
+                    <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                      <Input
+                        value={editTitle}
+                        onChange={(e) => setEditTitle(e.target.value)}
+                        className="h-6 text-sm py-0 px-1"
+                        autoFocus
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') handleSaveEdit(e as any);
+                          if (e.key === 'Escape') handleCancelEdit(e as any);
+                        }}
+                        data-testid={`input-rename-${conv.id}`}
+                      />
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-5 w-5 text-green-600 hover:text-green-700 hover:bg-green-50"
+                        onClick={handleSaveEdit}
+                        data-testid={`button-save-rename-${conv.id}`}
+                      >
+                        <Check className="w-3 h-3" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-5 w-5 text-neutral-500 hover:text-neutral-700"
+                        onClick={handleCancelEdit}
+                        data-testid={`button-cancel-rename-${conv.id}`}
+                      >
+                        <X className="w-3 h-3" />
+                      </Button>
+                    </div>
+                  ) : (
+                    <>
+                      <span className="truncate">{conv.title}</span>
+                      <span className="text-[10px] text-neutral-400 font-normal truncate">
+                        {formatDistanceToNow(new Date(conv.updatedAt), { addSuffix: true })}
+                      </span>
+                    </>
+                  )}
                 </div>
               </div>
 
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
-                  <Button variant="ghost" size="icon" className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity text-neutral-400 hover:text-neutral-600">
-                    <MoreHorizontal className="w-3 h-3" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-40 bg-white shadow-md border-neutral-200">
-                  <DropdownMenuItem className="gap-2 text-xs">
-                    <Edit2 className="w-3 h-3" /> Rename
-                  </DropdownMenuItem>
-                  <DropdownMenuItem 
-                    className="gap-2 text-xs text-red-600 focus:text-red-700 focus:bg-red-50"
-                    onClick={(e) => handleDelete(e, conv.id)}
+              {editingId !== conv.id && (
+                <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-6 w-6 text-neutral-400 hover:text-indigo-600 hover:bg-indigo-50"
+                    onClick={(e) => handleEditClick(e, conv)}
+                    data-testid={`button-edit-${conv.id}`}
                   >
-                    <Trash2 className="w-3 h-3" /> Delete
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
+                    <Pencil className="w-3 h-3" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-6 w-6 text-neutral-400 hover:text-red-600 hover:bg-red-50"
+                    onClick={(e) => handleDeleteClick(e, conv.id)}
+                    data-testid={`button-delete-${conv.id}`}
+                  >
+                    <Trash2 className="w-3 h-3" />
+                  </Button>
+                </div>
+              )}
             </div>
           ))}
 
@@ -125,6 +200,27 @@ export function Sidebar({ conversations, activeId, onSelect, onNew, onDelete, cl
           </div>
         </div>
       </div>
+
+      <AlertDialog open={deleteId !== null} onOpenChange={(open) => !open && setDeleteId(null)}>
+        <AlertDialogContent className="bg-white">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Conversation</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete this conversation? This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel data-testid="button-cancel-delete">Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleConfirmDelete}
+              className="bg-red-600 hover:bg-red-700 text-white"
+              data-testid="button-confirm-delete"
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

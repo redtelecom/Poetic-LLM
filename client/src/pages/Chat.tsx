@@ -35,6 +35,7 @@ import {
   fetchConversation, 
   createConversation, 
   deleteConversation,
+  renameConversation,
   sendChatMessage,
   fetchSettings,
   fetchReasoningSteps,
@@ -224,6 +225,15 @@ export default function Chat() {
     }
   };
 
+  const handleRenameConversation = async (id: string, newTitle: string) => {
+    try {
+      await renameConversation(id, newTitle);
+      await loadConversations();
+    } catch (error) {
+      console.error("Failed to rename conversation:", error);
+    }
+  };
+
   const handleSend = async () => {
     if (!input.trim() || isLoading) return;
 
@@ -339,6 +349,7 @@ export default function Chat() {
           onSelect={handleSelectConversation}
           onNew={handleNewConversation}
           onDelete={handleDeleteConversation}
+          onRename={handleRenameConversation}
         />
       </div>
 
@@ -358,6 +369,7 @@ export default function Chat() {
                   onSelect={handleSelectConversation}
                   onNew={handleNewConversation}
                   onDelete={handleDeleteConversation}
+                  onRename={handleRenameConversation}
                 />
               </SheetContent>
             </Sheet>

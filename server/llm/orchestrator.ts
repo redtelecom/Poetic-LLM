@@ -170,6 +170,19 @@ export class PoetiqOrchestrator {
       .join("\n");
   }
 
+  private extractUserImages(userPrompt: string | MessageContent[]): Array<{ type: "image"; mimeType: string; url: string }> {
+    if (typeof userPrompt === "string") {
+      return [];
+    }
+    const images: Array<{ type: "image"; mimeType: string; url: string }> = [];
+    for (const msg of userPrompt) {
+      if (msg.role === "user" && msg.images && Array.isArray(msg.images)) {
+        images.push(...msg.images);
+      }
+    }
+    return images;
+  }
+
   private getQuantAnalystPrompt(): string {
     return `You are a Senior Quant Analyst specializing in algorithmic trading strategies. 
 
@@ -246,10 +259,14 @@ Output ONLY the Pine Script code wrapped in a \`\`\`pine code block.`;
 
   private async runQuantPipelineForProvider(
     provider: ProviderConfig,
-    userText: string,
+    userPrompt: string | MessageContent[],
     onReasoningStep?: (step: ReasoningStep) => void
   ): Promise<QuantPipelineResult> {
     let accumulatedUsage = { inputTokens: 0, outputTokens: 0 };
+    
+    // Extract text and images from user prompt
+    const userText = this.extractUserPromptText(userPrompt);
+    const userImages = this.extractUserImages(userPrompt);
 
     try {
       onReasoningStep?.({
@@ -259,9 +276,15 @@ Output ONLY the Pine Script code wrapped in a \`\`\`pine code block.`;
         content: `[${provider.name}] Step 1: Analyst generating Strategy Plan...`,
       });
 
+      // Build analyst message with images if available
+      const userMessage: MessageContent = { role: "user", content: userText };
+      if (userImages.length > 0) {
+        userMessage.images = userImages;
+      }
+
       const analystMessages: MessageContent[] = [
         { role: "system", content: this.getQuantAnalystPrompt() },
-        { role: "user", content: userText }
+        userMessage
       ];
 
       const { content: strategyPlan, usage: analystUsage } = await this.collectStreamedResponse(provider, analystMessages);
@@ -357,10 +380,8 @@ Output ONLY the Pine Script code wrapped in a \`\`\`pine code block.`;
       return;
     }
 
-    const userText = this.extractUserPromptText(userPrompt);
-
     if (enabledProviders.length === 1) {
-      yield* this.solveQuantTaskSingleProvider(enabledProviders[0], userText, onReasoningStep, onTokenUsage);
+      yield* this.solveQuantTaskSingleProvider(enabledProviders[0], userPrompt, onReasoningStep, onTokenUsage);
       return;
     }
 
@@ -383,7 +404,7 @@ Output ONLY the Pine Script code wrapped in a \`\`\`pine code block.`;
     }
 
     const pipelinePromises = enabledProviders.map(provider => 
-      this.runQuantPipelineForProvider(provider, userText, onReasoningStep)
+      this.runQuantPipelineForProvider(provider, userPrompt, onReasoningStep)
     );
 
     const results: QuantPipelineResult[] = await Promise.all(pipelinePromises);
@@ -499,11 +520,15 @@ Output ONLY the Pine Script code wrapped in a \`\`\`pine code block.`;
 
   private async* solveQuantTaskSingleProvider(
     provider: ProviderConfig,
-    userText: string,
+    userPrompt: string | MessageContent[],
     onReasoningStep?: (step: ReasoningStep) => void,
     onTokenUsage?: (usage: TokenUsage) => void
   ): AsyncGenerator<string> {
     let accumulatedUsage = { inputTokens: 0, outputTokens: 0 };
+    
+    // Extract text and images from user prompt
+    const userText = this.extractUserPromptText(userPrompt);
+    const userImages = this.extractUserImages(userPrompt);
 
     onReasoningStep?.({
       provider: "orchestrator",
@@ -521,9 +546,15 @@ Output ONLY the Pine Script code wrapped in a \`\`\`pine code block.`;
 
     yield "## Strategy Analysis\n\n";
 
+    // Build analyst message with images if available
+    const userMessage: MessageContent = { role: "user", content: userText };
+    if (userImages.length > 0) {
+      userMessage.images = userImages;
+    }
+
     const analystMessages: MessageContent[] = [
       { role: "system", content: this.getQuantAnalystPrompt() },
-      { role: "user", content: userText }
+      userMessage
     ];
 
     let strategyPlan = "";

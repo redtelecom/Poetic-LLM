@@ -391,9 +391,9 @@ export default function Chat() {
         ) : (
           <>
             {/* Desktop: Resizable panels */}
-            <div className="hidden lg:flex flex-1 min-h-0">
-              <ResizablePanelGroup direction="horizontal" className="flex-1">
-                <ResizablePanel defaultSize={showReasoning ? 60 : 100} minSize={30}>
+            <div className="hidden lg:flex flex-1 min-h-0 overflow-hidden">
+              <ResizablePanelGroup direction="horizontal" className="h-full">
+                <ResizablePanel defaultSize={showReasoning ? 60 : 100} minSize={30} className="overflow-hidden">
                   <main className="h-full overflow-y-auto p-6 bg-neutral-50">
                     <div className="max-w-4xl mx-auto space-y-6">
                       {messages.length === 0 && !streamingContent && (
@@ -478,7 +478,7 @@ export default function Chat() {
                 {showReasoning && (
                   <>
                     <ResizableHandle withHandle className="w-2 bg-neutral-200 hover:bg-indigo-400 transition-colors" />
-                    <ResizablePanel defaultSize={40} minSize={20}>
+                    <ResizablePanel defaultSize={40} minSize={20} className="overflow-hidden">
                       <aside className="h-full bg-neutral-100 overflow-y-auto p-6">
                   <div className="space-y-4">
                     <div className="flex items-center justify-between mb-4">

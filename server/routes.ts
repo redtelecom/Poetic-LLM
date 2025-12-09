@@ -1,11 +1,65 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import multer from "multer";
+import sharp from "sharp";
 import { storage } from "./storage";
 import { insertConversationSchema, insertMessageSchema, insertSettingsSchema } from "@shared/schema";
 import { PoetiqOrchestrator } from "./llm/orchestrator";
 import type { ProviderConfig, TokenUsage } from "./llm/providers";
 import { ObjectStorageService, ObjectNotFoundError } from "./objectStorage";
+
+const MAX_IMAGE_DIMENSION = 2048;
+const MAX_IMAGE_SIZE_BYTES = 4 * 1024 * 1024; // 4MB max for AI APIs
+
+async function compressImage(buffer: Buffer, mimeType: string): Promise<{ buffer: Buffer; mimeType: string }> {
+  try {
+    const metadata = await sharp(buffer).metadata();
+    const width = metadata.width || 0;
+    const height = metadata.height || 0;
+    
+    console.log(`[Image] Original: ${width}x${height}, size: ${buffer.length} bytes, format: ${metadata.format}`);
+    
+    // Check if resizing is needed
+    const needsResize = width > MAX_IMAGE_DIMENSION || height > MAX_IMAGE_DIMENSION;
+    const needsCompression = buffer.length > MAX_IMAGE_SIZE_BYTES;
+    
+    if (!needsResize && !needsCompression) {
+      console.log('[Image] No compression needed');
+      return { buffer, mimeType };
+    }
+    
+    let sharpInstance = sharp(buffer);
+    
+    // Resize if too large
+    if (needsResize) {
+      sharpInstance = sharpInstance.resize(MAX_IMAGE_DIMENSION, MAX_IMAGE_DIMENSION, {
+        fit: 'inside',
+        withoutEnlargement: true
+      });
+    }
+    
+    // Convert to JPEG for better compression (PNG screenshots can be huge)
+    // Use progressive JPEG with quality adjustment based on original size
+    let quality = 85;
+    if (buffer.length > 8 * 1024 * 1024) {
+      quality = 70; // More aggressive for very large images
+    } else if (buffer.length > 4 * 1024 * 1024) {
+      quality = 80;
+    }
+    
+    const compressedBuffer = await sharpInstance
+      .jpeg({ quality, progressive: true })
+      .toBuffer();
+    
+    console.log(`[Image] Compressed: size: ${compressedBuffer.length} bytes`);
+    
+    return { buffer: compressedBuffer, mimeType: 'image/jpeg' };
+  } catch (error) {
+    console.error('[Image] Compression failed:', error);
+    // Return original if compression fails
+    return { buffer, mimeType };
+  }
+}
 
 function parsePoetiqResponse(fullResponse: string): { review: string | null; enhancedResponse: string } {
   const reviewMatch = fullResponse.match(/##\s*Review of Previous Response\s*([\s\S]*?)(?=##\s*Enhanced Response|$)/i);
@@ -453,15 +507,26 @@ Provide a concise summary (2-3 paragraphs max):`;
         return res.status(400).json({ error: "No file provided" });
       }
 
-      const base64 = req.file.buffer.toString("base64");
-      const dataUrl = `data:${req.file.mimetype};base64,${base64}`;
+      // Compress image if it's an image type
+      const isImage = req.file.mimetype.startsWith('image/');
+      let finalBuffer = req.file.buffer;
+      let finalMimeType = req.file.mimetype;
+      
+      if (isImage) {
+        const compressed = await compressImage(req.file.buffer, req.file.mimetype);
+        finalBuffer = compressed.buffer;
+        finalMimeType = compressed.mimeType;
+      }
+
+      const base64 = finalBuffer.toString("base64");
+      const dataUrl = `data:${finalMimeType};base64,${base64}`;
       const storageKey = `inline-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
       res.json({ 
         storageKey,
         url: dataUrl,
-        mimeType: req.file.mimetype,
-        size: req.file.size
+        mimeType: finalMimeType,
+        size: finalBuffer.length
       });
     } catch (error) {
       console.error("Error uploading file:", error);

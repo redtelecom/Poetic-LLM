@@ -91,8 +91,10 @@ export async function registerRoutes(
   });
 
   app.post("/api/conversations/:id/solve", async (req, res) => {
+    const SLIDING_WINDOW_SIZE = 10;
+    
     try {
-      const { message, providers } = req.body;
+      const { message, providers, attachments } = req.body;
       
       if (!message || !providers) {
         return res.status(400).json({ error: "Message and providers required" });
@@ -106,8 +108,41 @@ export async function registerRoutes(
         conversationId: req.params.id,
         role: "user",
         content: message,
-        metadata: null,
+        metadata: attachments && attachments.length > 0 ? { attachments } : null,
       });
+
+      // Build conversation history with sliding window + rolling summary
+      const existingMessages = await storage.getMessages(req.params.id);
+      const existingSummary = await storage.getConversationSummary(req.params.id);
+      
+      const recentMessages = existingMessages.slice(-SLIDING_WINDOW_SIZE);
+      
+      const conversationHistory: Array<{ role: "user" | "assistant" | "system"; content: string; images?: Array<{ type: "image"; mimeType: string; url: string }> }> = [];
+      
+      if (existingSummary) {
+        conversationHistory.push({
+          role: "system",
+          content: `Previous conversation summary:\n${existingSummary.summary}`
+        });
+      }
+      
+      for (const m of recentMessages) {
+        const metadata = m.metadata as { attachments?: Array<{ type: string; mimeType: string; url: string }> } | null;
+        const messageImages = metadata?.attachments?.filter((a: any) => a.type === "image");
+        conversationHistory.push({
+          role: m.role as "user" | "assistant",
+          content: m.content,
+          ...(messageImages && messageImages.length > 0 ? { images: messageImages as Array<{ type: "image"; mimeType: string; url: string }> } : {})
+        });
+      }
+
+      // Merge current request attachments into the last user message
+      if (attachments && attachments.length > 0) {
+        const lastMessage = conversationHistory[conversationHistory.length - 1];
+        if (lastMessage && lastMessage.role === "user") {
+          lastMessage.images = attachments.filter((a: any) => a.type === "image");
+        }
+      }
 
       const orchestrator = new PoetiqOrchestrator(providers as ProviderConfig[]);
       let fullResponse = "";
@@ -116,7 +151,7 @@ export async function registerRoutes(
       let tokenUsage: TokenUsage = { inputTokens: 0, outputTokens: 0 };
       
       for await (const chunk of orchestrator.solveTask(
-        message,
+        conversationHistory.length > 0 ? conversationHistory : message,
         (step) => {
           stepNumber++;
           const stepData = { ...step, stepNumber };

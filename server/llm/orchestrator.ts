@@ -955,7 +955,7 @@ Always provide working Python code that prints the solution.`;
   }
 
   async* chat(
-    messages: Array<{ role: "user" | "assistant" | "system"; content: string }>
+    messages: MessageContent[]
   ): AsyncGenerator<string> {
     const enabledProviders = this.providers.filter(p => p.enabled);
     
@@ -973,15 +973,15 @@ Always provide working Python code that prints the solution.`;
   }
 
   private async* chatSingleProvider(
-    messages: Array<{ role: "user" | "assistant" | "system"; content: string }>,
+    messages: MessageContent[],
     provider: ProviderConfig
   ): AsyncGenerator<string> {
-    const systemMessage = {
-      role: "system" as const,
+    const systemMessage: MessageContent = {
+      role: "system",
       content: "You are a helpful AI assistant. Provide clear, thoughtful responses."
     };
     
-    const fullMessages = [systemMessage, ...messages];
+    const fullMessages: MessageContent[] = [systemMessage, ...messages];
 
     if (provider.id === "openai") {
       for await (const chunk of streamOpenAI(provider.model, fullMessages)) {
@@ -995,15 +995,15 @@ Always provide working Python code that prints the solution.`;
   }
 
   private async* chatMultiProvider(
-    messages: Array<{ role: "user" | "assistant" | "system"; content: string }>,
+    messages: MessageContent[],
     providers: ProviderConfig[]
   ): AsyncGenerator<string> {
     const lastUserMessage = messages.filter(m => m.role === "user").pop()?.content || "";
     const taskType = this.taskRouter.classifyTask(lastUserMessage);
     const strategy = this.taskRouter.selectConsensusStrategy(taskType, this.consensusMode);
 
-    const systemMessage = {
-      role: "system" as const,
+    const systemMessage: MessageContent = {
+      role: "system",
       content: "You are a helpful AI assistant. Provide clear, thoughtful responses."
     };
     const fullMessages: MessageContent[] = [systemMessage, ...messages];

@@ -128,11 +128,13 @@ export async function registerRoutes(
       
       for (const m of recentMessages) {
         const metadata = m.metadata as { attachments?: Array<{ type: string; mimeType: string; url: string }> } | null;
-        const messageImages = metadata?.attachments?.filter((a: any) => a.type === "image");
+        const messageImages = metadata?.attachments
+          ?.filter((a) => a.type === "image")
+          .map((a) => ({ type: "image" as const, mimeType: a.mimeType, url: a.url }));
         conversationHistory.push({
           role: m.role as "user" | "assistant",
           content: m.content,
-          ...(messageImages && messageImages.length > 0 ? { images: messageImages as Array<{ type: "image"; mimeType: string; url: string }> } : {})
+          ...(messageImages && messageImages.length > 0 ? { images: messageImages } : {})
         });
       }
 
@@ -140,7 +142,9 @@ export async function registerRoutes(
       if (attachments && attachments.length > 0) {
         const lastMessage = conversationHistory[conversationHistory.length - 1];
         if (lastMessage && lastMessage.role === "user") {
-          lastMessage.images = attachments.filter((a: any) => a.type === "image");
+          lastMessage.images = attachments
+            .filter((a: any) => a.type === "image")
+            .map((a: any) => ({ type: "image" as const, mimeType: a.mimeType, url: a.url }));
         }
       }
 
@@ -299,7 +303,9 @@ export async function registerRoutes(
       
       for (const m of recentMessages) {
         const metadata = m.metadata as { attachments?: Array<{ type: string; mimeType: string; url: string }> } | null;
-        const messageImages = metadata?.attachments?.filter((a: any) => a.type === "image");
+        const messageImages = metadata?.attachments
+          ?.filter((a) => a.type === "image")
+          .map((a) => ({ type: "image" as const, mimeType: a.mimeType, url: a.url }));
         conversationHistory.push({
           role: m.role as "user" | "assistant",
           content: m.content,
@@ -310,7 +316,9 @@ export async function registerRoutes(
       if (attachments && attachments.length > 0) {
         const lastMessage = conversationHistory[conversationHistory.length - 1];
         if (lastMessage && lastMessage.role === "user") {
-          lastMessage.images = attachments.filter((a: any) => a.type === "image");
+          lastMessage.images = attachments
+            .filter((a: any) => a.type === "image")
+            .map((a: any) => ({ type: "image" as const, mimeType: a.mimeType, url: a.url }));
         }
       }
 

@@ -435,7 +435,7 @@ export default function Chat() {
               <ResizablePanelGroup direction="horizontal" className="h-full">
                 <ResizablePanel id="chat-panel" order={1} defaultSize={60} minSize={30} className="min-w-0 overflow-hidden">
                   <main className="h-full overflow-y-auto p-6 bg-neutral-50">
-                    <div className="max-w-4xl mx-auto space-y-6">
+                    <div className="space-y-6 px-2">
                       {messages.length === 0 && !streamingContent && (
                         <div className="text-center py-20 text-neutral-400">
                           <MessageCircle className="w-16 h-16 mx-auto mb-4 opacity-50" />

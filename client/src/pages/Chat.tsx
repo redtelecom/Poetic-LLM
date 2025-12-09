@@ -426,7 +426,7 @@ export default function Chat() {
                             </div>
                           ) : (
                             <div className="flex-1 min-w-0 relative group">
-                              <div className="prose prose-sm max-w-none prose-neutral break-words overflow-hidden [&_pre]:overflow-x-auto [&_pre]:max-w-full [&_pre]:bg-neutral-900 [&_pre]:text-neutral-100 [&_pre]:rounded-lg [&_pre]:p-4 [&_code]:break-all [&_p]:break-words">
+                              <div className="prose prose-sm max-w-none prose-neutral break-words [&_pre]:overflow-x-auto [&_pre]:max-w-full [&_pre]:bg-neutral-900 [&_pre]:text-neutral-100 [&_pre]:rounded-lg [&_pre]:p-4 [&_pre]:font-mono [&_code]:break-words [&_p]:break-words">
                                 <ReactMarkdown remarkPlugins={[remarkGfm]}>
                                   {message.content}
                                 </ReactMarkdown>
@@ -460,7 +460,7 @@ export default function Chat() {
                             <Bot className="w-4 h-4 text-white" />
                           </div>
                           <div className="flex-1 min-w-0">
-                            <div className="prose prose-sm max-w-none prose-neutral break-words overflow-hidden [&_pre]:overflow-x-auto [&_pre]:max-w-full [&_pre]:bg-neutral-900 [&_pre]:text-neutral-100 [&_pre]:rounded-lg [&_pre]:p-4 [&_code]:break-all [&_p]:break-words">
+                            <div className="prose prose-sm max-w-none prose-neutral break-words [&_pre]:overflow-x-auto [&_pre]:max-w-full [&_pre]:bg-neutral-900 [&_pre]:text-neutral-100 [&_pre]:rounded-lg [&_pre]:p-4 [&_pre]:font-mono [&_code]:break-words [&_p]:break-words">
                               <ReactMarkdown remarkPlugins={[remarkGfm]}>
                                 {streamingContent}
                               </ReactMarkdown>

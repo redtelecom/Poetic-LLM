@@ -385,94 +385,97 @@ export default function Chat() {
           </main>
         ) : (
           <>
-            <div className="flex-1 flex overflow-hidden">
-              <main className={cn("flex-1 overflow-y-auto p-6", showReasoning && "lg:w-1/2")}>
-                <div className="max-w-3xl mx-auto space-y-4">
-                {messages.length === 0 && !streamingContent && (
-                  <div className="text-center py-20 text-neutral-400">
-                    <MessageCircle className="w-16 h-16 mx-auto mb-4 opacity-50" />
-                    <h2 className="text-xl font-medium text-neutral-600 mb-2">Start a conversation</h2>
-                    <p className="text-sm">Send a message to begin chatting with the AI</p>
-                  </div>
-                )}
-
-                {messages.map((message) => (
-                  <div 
-                    key={message.id}
-                    className={cn(
-                      "flex gap-3",
-                      message.role === "user" ? "justify-end" : "justify-start"
-                    )}
-                    data-testid={`message-${message.id}`}
-                  >
-                    {message.role === "assistant" && (
-                      <div className="w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center shrink-0">
-                        <Bot className="w-4 h-4 text-indigo-600" />
-                      </div>
-                    )}
-                    <Card className={cn(
-                      "max-w-[80%] p-4 relative group",
-                      message.role === "user" 
-                        ? "bg-indigo-600 text-white border-indigo-600" 
-                        : "bg-white border-neutral-200"
-                    )}>
-                      {message.role === "user" ? (
-                        <pre className="whitespace-pre-wrap font-sans text-sm text-white">
-                          {message.content}
-                        </pre>
-                      ) : (
-                        <>
-                          <div className="prose prose-sm max-w-none prose-neutral">
-                            <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                              {message.content}
-                            </ReactMarkdown>
-                          </div>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity h-7 w-7 p-0"
-                            onClick={() => copyToClipboard(message.content, message.id)}
-                            data-testid={`button-copy-${message.id}`}
-                          >
-                            {copiedMessageId === message.id ? (
-                              <Check className="w-3.5 h-3.5 text-green-600" />
-                            ) : (
-                              <Copy className="w-3.5 h-3.5 text-neutral-500" />
-                            )}
-                          </Button>
-                        </>
-                      )}
-                    </Card>
-                    {message.role === "user" && (
-                      <div className="w-8 h-8 rounded-full bg-neutral-200 flex items-center justify-center shrink-0">
-                        <User className="w-4 h-4 text-neutral-600" />
-                      </div>
-                    )}
-                  </div>
-                ))}
-
-                {streamingContent && (
-                  <div className="flex gap-3 justify-start">
-                    <div className="w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center shrink-0">
-                      <Bot className="w-4 h-4 text-indigo-600" />
+            <div className="flex-1 flex flex-col lg:flex-row overflow-hidden">
+              <main className={cn(
+                "flex-1 overflow-y-auto p-6 bg-neutral-50",
+                showReasoning && "lg:flex-[0_0_60%]"
+              )}>
+                <div className="max-w-3xl mx-auto space-y-6">
+                  {messages.length === 0 && !streamingContent && (
+                    <div className="text-center py-20 text-neutral-400">
+                      <MessageCircle className="w-16 h-16 mx-auto mb-4 opacity-50" />
+                      <h2 className="text-xl font-medium text-neutral-600 mb-2">Start a conversation</h2>
+                      <p className="text-sm">Send a message to begin chatting with the AI</p>
                     </div>
-                    <Card className="max-w-[80%] p-4 bg-white border-neutral-200">
-                      <div className="prose prose-sm max-w-none prose-neutral">
-                        <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                          {streamingContent}
-                        </ReactMarkdown>
-                        <span className="inline-block w-2 h-4 bg-indigo-600 ml-1 animate-pulse" />
-                      </div>
-                    </Card>
-                  </div>
-                )}
+                  )}
 
-                <div ref={messagesEndRef} />
-              </div>
-            </main>
+                  {messages.map((message) => (
+                    <div 
+                      key={message.id}
+                      className={cn(
+                        "flex gap-3",
+                        message.role === "user" ? "justify-end" : "justify-start"
+                      )}
+                      data-testid={`message-${message.id}`}
+                    >
+                      {message.role === "assistant" && (
+                        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shrink-0 shadow-sm">
+                          <Bot className="w-4 h-4 text-white" />
+                        </div>
+                      )}
+                      <div className={cn(
+                        "max-w-[85%] min-w-0 rounded-2xl relative group shadow-sm",
+                        message.role === "user" 
+                          ? "bg-indigo-600 text-white px-4 py-3" 
+                          : "bg-white border border-neutral-200 px-4 py-3"
+                      )}>
+                        {message.role === "user" ? (
+                          <div className="text-sm break-words whitespace-pre-wrap">
+                            {message.content}
+                          </div>
+                        ) : (
+                          <>
+                            <div className="prose prose-sm max-w-none prose-neutral break-words overflow-hidden [&_pre]:overflow-x-auto [&_pre]:max-w-full [&_code]:break-all [&_p]:break-words">
+                              <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                                {message.content}
+                              </ReactMarkdown>
+                            </div>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity h-7 w-7 p-0 bg-white/80 hover:bg-white"
+                              onClick={() => copyToClipboard(message.content, message.id)}
+                              data-testid={`button-copy-${message.id}`}
+                            >
+                              {copiedMessageId === message.id ? (
+                                <Check className="w-3.5 h-3.5 text-green-600" />
+                              ) : (
+                                <Copy className="w-3.5 h-3.5 text-neutral-500" />
+                              )}
+                            </Button>
+                          </>
+                        )}
+                      </div>
+                      {message.role === "user" && (
+                        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-neutral-400 to-neutral-600 flex items-center justify-center shrink-0 shadow-sm">
+                          <User className="w-4 h-4 text-white" />
+                        </div>
+                      )}
+                    </div>
+                  ))}
+
+                  {streamingContent && (
+                    <div className="flex gap-3 justify-start">
+                      <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shrink-0 shadow-sm">
+                        <Bot className="w-4 h-4 text-white" />
+                      </div>
+                      <div className="max-w-[85%] min-w-0 rounded-2xl bg-white border border-neutral-200 px-4 py-3 shadow-sm">
+                        <div className="prose prose-sm max-w-none prose-neutral break-words overflow-hidden [&_pre]:overflow-x-auto [&_pre]:max-w-full [&_code]:break-all [&_p]:break-words">
+                          <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                            {streamingContent}
+                          </ReactMarkdown>
+                          <span className="inline-block w-2 h-4 bg-indigo-600 ml-1 animate-pulse rounded-sm" />
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  <div ref={messagesEndRef} />
+                </div>
+              </main>
 
               {showReasoning && (
-                <aside className="hidden lg:block w-1/2 border-l border-neutral-200 bg-white overflow-y-auto p-6">
+                <aside className="hidden lg:block lg:flex-[0_0_40%] border-l border-neutral-200 bg-neutral-100 overflow-y-auto p-6">
                   <div className="space-y-4">
                     <div className="flex items-center justify-between mb-4">
                       <div className="flex items-center gap-2">
@@ -509,7 +512,7 @@ export default function Chat() {
                           <CheckCircle2 className="w-4 h-4" />
                         </div>
                         
-                        <Card className="p-4">
+                        <Card className="p-4 bg-white">
                           <div className="flex items-center justify-between mb-2">
                             <div className="flex items-center gap-2">
                               <Badge className="text-[10px] bg-indigo-100 text-indigo-700 border-indigo-200">
@@ -526,7 +529,7 @@ export default function Chat() {
                               </div>
                             )}
                           </div>
-                          <p className="text-sm text-neutral-700">{step.content}</p>
+                          <p className="text-sm text-neutral-700 break-words whitespace-pre-wrap">{step.content}</p>
                           <p className="text-xs text-neutral-500 mt-1">Model: {step.model}</p>
                         </Card>
                       </div>

@@ -1,6 +1,7 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { X, ImagePlus, Loader2 } from "lucide-react";
+import { toast } from "@/hooks/use-toast";
 
 export interface FileAttachment {
   id: string;
@@ -37,7 +38,8 @@ export function FileUploader({ attachments, setAttachments, disabled }: FileUplo
     });
     
     if (!response.ok) {
-      throw new Error("Upload failed");
+      const errorData = await response.json().catch(() => ({ error: "Upload failed" }));
+      throw new Error(errorData.error || "Upload failed");
     }
     
     return response.json();
@@ -46,12 +48,23 @@ export function FileUploader({ attachments, setAttachments, disabled }: FileUplo
   const addFiles = useCallback(async (files: FileList | File[]) => {
     for (const file of Array.from(files)) {
       if (file.size > MAX_FILE_SIZE) {
-        console.warn(`File ${file.name} is too large (max 10MB)`);
+        toast({
+          title: "File too large",
+          description: `"${file.name}" exceeds the 10MB limit. Please use a smaller image.`,
+          variant: "destructive"
+        });
         continue;
       }
 
       const isImage = ALLOWED_IMAGE_TYPES.includes(file.type);
-      if (!isImage) continue;
+      if (!isImage) {
+        toast({
+          title: "Unsupported format",
+          description: `"${file.name}" is not a supported image format. Please use JPEG, PNG, GIF, or WebP.`,
+          variant: "destructive"
+        });
+        continue;
+      }
       
       const id = crypto.randomUUID();
       const preview = URL.createObjectURL(file);
@@ -77,6 +90,12 @@ export function FileUploader({ attachments, setAttachments, disabled }: FileUplo
         ));
       } catch (error) {
         console.error("Upload failed:", error);
+        const errorMessage = error instanceof Error ? error.message : "Failed to upload image";
+        toast({
+          title: "Upload failed",
+          description: errorMessage,
+          variant: "destructive"
+        });
         setAttachments(prev => prev.filter(a => a.id !== id));
         URL.revokeObjectURL(preview);
       }

@@ -12,53 +12,47 @@ const MAX_IMAGE_DIMENSION = 2048;
 const MAX_IMAGE_SIZE_BYTES = 4 * 1024 * 1024; // 4MB max for AI APIs
 
 async function compressImage(buffer: Buffer, mimeType: string): Promise<{ buffer: Buffer; mimeType: string }> {
-  try {
-    const metadata = await sharp(buffer).metadata();
-    const width = metadata.width || 0;
-    const height = metadata.height || 0;
-    
-    console.log(`[Image] Original: ${width}x${height}, size: ${buffer.length} bytes, format: ${metadata.format}`);
-    
-    // Check if resizing is needed
-    const needsResize = width > MAX_IMAGE_DIMENSION || height > MAX_IMAGE_DIMENSION;
-    const needsCompression = buffer.length > MAX_IMAGE_SIZE_BYTES;
-    
-    if (!needsResize && !needsCompression) {
-      console.log('[Image] No compression needed');
-      return { buffer, mimeType };
-    }
-    
-    let sharpInstance = sharp(buffer);
-    
-    // Resize if too large
-    if (needsResize) {
-      sharpInstance = sharpInstance.resize(MAX_IMAGE_DIMENSION, MAX_IMAGE_DIMENSION, {
-        fit: 'inside',
-        withoutEnlargement: true
-      });
-    }
-    
-    // Convert to JPEG for better compression (PNG screenshots can be huge)
-    // Use progressive JPEG with quality adjustment based on original size
-    let quality = 85;
-    if (buffer.length > 8 * 1024 * 1024) {
-      quality = 70; // More aggressive for very large images
-    } else if (buffer.length > 4 * 1024 * 1024) {
-      quality = 80;
-    }
-    
-    const compressedBuffer = await sharpInstance
-      .jpeg({ quality, progressive: true })
-      .toBuffer();
-    
-    console.log(`[Image] Compressed: size: ${compressedBuffer.length} bytes`);
-    
-    return { buffer: compressedBuffer, mimeType: 'image/jpeg' };
-  } catch (error) {
-    console.error('[Image] Compression failed:', error);
-    // Return original if compression fails
+  const metadata = await sharp(buffer).metadata();
+  const width = metadata.width || 0;
+  const height = metadata.height || 0;
+  
+  console.log(`[Image] Original: ${width}x${height}, size: ${buffer.length} bytes, format: ${metadata.format}`);
+  
+  // Check if resizing is needed
+  const needsResize = width > MAX_IMAGE_DIMENSION || height > MAX_IMAGE_DIMENSION;
+  const needsCompression = buffer.length > MAX_IMAGE_SIZE_BYTES;
+  
+  if (!needsResize && !needsCompression) {
+    console.log('[Image] No compression needed');
     return { buffer, mimeType };
   }
+  
+  let sharpInstance = sharp(buffer);
+  
+  // Resize if too large
+  if (needsResize) {
+    sharpInstance = sharpInstance.resize(MAX_IMAGE_DIMENSION, MAX_IMAGE_DIMENSION, {
+      fit: 'inside',
+      withoutEnlargement: true
+    });
+  }
+  
+  // Convert to JPEG for better compression (PNG screenshots can be huge)
+  // Use progressive JPEG with quality adjustment based on original size
+  let quality = 85;
+  if (buffer.length > 8 * 1024 * 1024) {
+    quality = 70; // More aggressive for very large images
+  } else if (buffer.length > 4 * 1024 * 1024) {
+    quality = 80;
+  }
+  
+  const compressedBuffer = await sharpInstance
+    .jpeg({ quality, progressive: true })
+    .toBuffer();
+  
+  console.log(`[Image] Compressed: size: ${compressedBuffer.length} bytes`);
+  
+  return { buffer: compressedBuffer, mimeType: 'image/jpeg' };
 }
 
 function parsePoetiqResponse(fullResponse: string): { review: string | null; enhancedResponse: string } {
@@ -513,9 +507,23 @@ Provide a concise summary (2-3 paragraphs max):`;
       let finalMimeType = req.file.mimetype;
       
       if (isImage) {
-        const compressed = await compressImage(req.file.buffer, req.file.mimetype);
-        finalBuffer = compressed.buffer;
-        finalMimeType = compressed.mimeType;
+        try {
+          const compressed = await compressImage(req.file.buffer, req.file.mimetype);
+          finalBuffer = compressed.buffer;
+          finalMimeType = compressed.mimeType;
+          
+          // Check if the compressed image is still too large
+          if (finalBuffer.length > MAX_IMAGE_SIZE_BYTES) {
+            return res.status(413).json({ 
+              error: "Image is too large even after compression. Please use a smaller or simpler image." 
+            });
+          }
+        } catch (compressionError) {
+          console.error("Image compression error:", compressionError);
+          return res.status(400).json({ 
+            error: "Could not process this image. Please try a different image format or file." 
+          });
+        }
       }
 
       const base64 = finalBuffer.toString("base64");
@@ -530,7 +538,7 @@ Provide a concise summary (2-3 paragraphs max):`;
       });
     } catch (error) {
       console.error("Error uploading file:", error);
-      res.status(500).json({ error: "Failed to upload file" });
+      res.status(500).json({ error: "Failed to upload file. Please try again." });
     }
   });
 

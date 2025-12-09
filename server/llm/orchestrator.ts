@@ -1,4 +1,8 @@
 import { callOpenAI, callAnthropic, streamOpenAI, streamAnthropic, type ProviderConfig, type ReasoningStep, type TokenUsage, type MessageContent } from "./providers";
+import { spawn } from "child_process";
+import * as fs from "fs";
+import * as path from "path";
+import * as os from "os";
 
 export class PoetiqOrchestrator {
   private providers: ProviderConfig[];
@@ -8,10 +12,70 @@ export class PoetiqOrchestrator {
   }
 
   private async executePython(code: string): Promise<{ success: boolean; output: string }> {
-    if (code.includes("print")) {
-      return { success: true, output: "Verified" };
-    }
-    return { success: false, output: "SyntaxError: Missing print statement" };
+    return new Promise((resolve) => {
+      const tempDir = os.tmpdir();
+      const tempFile = path.join(tempDir, `poetiq_${Date.now()}_${Math.random().toString(36).slice(2)}.py`);
+      let resolved = false;
+      let timeoutId: NodeJS.Timeout | null = null;
+      
+      const cleanup = () => {
+        if (timeoutId) {
+          clearTimeout(timeoutId);
+          timeoutId = null;
+        }
+        try {
+          fs.unlinkSync(tempFile);
+        } catch (e) {
+        }
+      };
+
+      const safeResolve = (result: { success: boolean; output: string }) => {
+        if (!resolved) {
+          resolved = true;
+          cleanup();
+          resolve(result);
+        }
+      };
+      
+      try {
+        fs.writeFileSync(tempFile, code, "utf-8");
+        
+        const pythonProcess = spawn("python3", [tempFile], {
+          cwd: tempDir,
+        });
+
+        let stdout = "";
+        let stderr = "";
+
+        pythonProcess.stdout.on("data", (data) => {
+          stdout += data.toString();
+        });
+
+        pythonProcess.stderr.on("data", (data) => {
+          stderr += data.toString();
+        });
+
+        pythonProcess.on("close", (exitCode) => {
+          if (exitCode === 0) {
+            const output = stdout.trim() + (stderr.trim() ? `\n[stderr]: ${stderr.trim()}` : "");
+            safeResolve({ success: true, output: output || "Code executed successfully (no output)" });
+          } else {
+            safeResolve({ success: false, output: stderr.trim() || `Process exited with code ${exitCode}` });
+          }
+        });
+
+        pythonProcess.on("error", (err) => {
+          safeResolve({ success: false, output: `Failed to execute Python: ${err.message}` });
+        });
+
+        timeoutId = setTimeout(() => {
+          pythonProcess.kill();
+          safeResolve({ success: false, output: "Execution timed out (10 second limit)" });
+        }, 10000);
+      } catch (err: any) {
+        safeResolve({ success: false, output: `Error: ${err.message}` });
+      }
+    });
   }
 
   private extractPythonCode(response: string): string | null {
@@ -91,6 +155,7 @@ Always provide working Python code that prints the solution.`;
     let solved = false;
     let accumulatedUsage = { inputTokens: 0, outputTokens: 0 };
     let verifiedResponse = "";
+    let executionOutput = "";
 
     onReasoningStep?.({
       provider: "orchestrator",
@@ -152,11 +217,12 @@ Always provide working Python code that prints the solution.`;
           provider: "executor",
           model: "python-sandbox",
           action: "verify",
-          content: `Code verified successfully: ${execResult.output}`,
+          content: `Code executed successfully:\n${execResult.output}`,
         });
 
         solved = true;
         verifiedResponse = response;
+        executionOutput = execResult.output;
       } else {
         onReasoningStep?.({
           provider: "executor",
@@ -182,7 +248,8 @@ Always provide working Python code that prints the solution.`;
     });
 
     if (solved) {
-      for await (const chunk of this.yieldBufferedContent(verifiedResponse)) {
+      const finalResponse = `${verifiedResponse}\n\n**Execution Result:**\n\`\`\`\n${executionOutput}\n\`\`\``;
+      for await (const chunk of this.yieldBufferedContent(finalResponse)) {
         yield chunk;
       }
     } else {

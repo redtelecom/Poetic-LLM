@@ -122,11 +122,13 @@ export async function fetchSettings(): Promise<Settings> {
   return response.json();
 }
 
-export async function updateSettings(providers: any): Promise<Settings> {
+export type ConsensusMode = "auto" | "exact" | "semantic";
+
+export async function updateSettings(providers: any, consensusMode?: ConsensusMode): Promise<Settings> {
   const response = await fetch("/api/settings", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ providers }),
+    body: JSON.stringify({ providers, consensusMode }),
   });
   if (!response.ok) throw new Error("Failed to update settings");
   return response.json();

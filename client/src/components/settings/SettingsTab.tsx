@@ -12,8 +12,9 @@ import {
   Info
 } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
-import { updateSettings } from "@/lib/api";
+import { updateSettings, type ConsensusMode } from "@/lib/api";
 import type { ProviderConfig } from "@/lib/api";
+import { GitBranch } from "lucide-react";
 
 interface Model {
   id: string;
@@ -37,9 +38,17 @@ const PROVIDER_MODELS: Record<string, Model[]> = {
 interface SettingsTabProps {
   providers: ProviderConfig[];
   onProvidersChange: (providers: ProviderConfig[]) => void;
+  consensusMode: ConsensusMode;
+  onConsensusModeChange: (mode: ConsensusMode) => void;
 }
 
-export default function SettingsTab({ providers, onProvidersChange }: SettingsTabProps) {
+const CONSENSUS_MODES: { id: ConsensusMode; name: string; description: string }[] = [
+  { id: "auto", name: "Auto", description: "Automatically select based on task type" },
+  { id: "exact", name: "Exact Match", description: "Group identical answers, best for structured tasks" },
+  { id: "semantic", name: "Semantic", description: "Cluster similar answers, best for open-ended tasks" },
+];
+
+export default function SettingsTab({ providers, onProvidersChange, consensusMode, onConsensusModeChange }: SettingsTabProps) {
   const handleToggleProvider = (id: string, checked: boolean) => {
     const updated = providers.map(p => 
       p.id === id ? { ...p, enabled: checked } : p
@@ -63,11 +72,12 @@ export default function SettingsTab({ providers, onProvidersChange }: SettingsTa
 
   const handleSave = async () => {
     try {
-      await updateSettings(providers);
+      await updateSettings(providers, consensusMode);
       const activeProviders = providers.filter(p => p.enabled);
+      const modeLabel = CONSENSUS_MODES.find(m => m.id === consensusMode)?.name || consensusMode;
       toast({
         title: "Configuration Saved",
-        description: `Poetiq configured to orchestrate ${activeProviders.length} model${activeProviders.length !== 1 ? 's' : ''}: ${activeProviders.map(p => p.name).join(", ")}`,
+        description: `Poetiq configured with ${activeProviders.length} model${activeProviders.length !== 1 ? 's' : ''} using ${modeLabel} consensus.`,
       });
     } catch (error) {
       console.error("Failed to save settings:", error);
@@ -173,6 +183,56 @@ export default function SettingsTab({ providers, onProvidersChange }: SettingsTa
               </div>
             </div>
 
+          </CardContent>
+        </Card>
+
+        <Card className="border-neutral-200 bg-white shadow-sm">
+          <CardHeader className="pb-4">
+            <CardTitle className="flex items-center gap-2">
+              <GitBranch className="w-5 h-5 text-neutral-500" />
+              Consensus Strategy
+            </CardTitle>
+            <CardDescription>
+              When multiple models are enabled, choose how their answers are combined. This affects how Poetiq determines the best response.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex items-center gap-4">
+              <Label className="text-xs text-neutral-500 uppercase font-medium min-w-[80px]">Strategy</Label>
+              <Select 
+                value={consensusMode} 
+                onValueChange={(val) => onConsensusModeChange(val as ConsensusMode)}
+              >
+                <SelectTrigger className="w-[280px] h-9 bg-white text-sm" data-testid="select-consensus-mode">
+                  <SelectValue placeholder="Select consensus mode" />
+                </SelectTrigger>
+                <SelectContent className="bg-white border-neutral-200 shadow-lg">
+                  {CONSENSUS_MODES.map((mode) => (
+                    <SelectItem key={mode.id} value={mode.id}>
+                      <div className="flex flex-col">
+                        <span>{mode.name}</span>
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            
+            <div className="text-sm text-neutral-500 pl-[96px]">
+              {CONSENSUS_MODES.find(m => m.id === consensusMode)?.description}
+            </div>
+
+            <div className="rounded-md bg-amber-50 p-4 border border-amber-100 flex gap-3 mt-4">
+              <Info className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+              <div className="text-sm text-amber-900">
+                <p className="font-semibold mb-1">When to use each strategy</p>
+                <ul className="leading-relaxed opacity-90 list-disc list-inside space-y-1">
+                  <li><strong>Auto:</strong> Let Poetiq analyze your prompt and choose automatically</li>
+                  <li><strong>Exact Match:</strong> Best for math, code, factual questions with one correct answer</li>
+                  <li><strong>Semantic:</strong> Best for explanations, creative tasks, open-ended discussions</li>
+                </ul>
+              </div>
+            </div>
           </CardContent>
           <CardFooter className="bg-neutral-50/50 border-t border-neutral-100 flex justify-end items-center py-4">
              <Button 

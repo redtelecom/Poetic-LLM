@@ -144,7 +144,10 @@ export async function registerRoutes(
         }
       }
 
-      const orchestrator = new PoetiqOrchestrator(providers as ProviderConfig[]);
+      const settings = await storage.getSettings();
+      const consensusMode = (settings?.consensusMode as "auto" | "exact" | "semantic") || "auto";
+      
+      const orchestrator = new PoetiqOrchestrator(providers as ProviderConfig[], consensusMode);
       let fullResponse = "";
       let stepNumber = 0;
       const pendingSteps: Array<{ provider: string; model: string; action: string; content: string; stepNumber: number; tokenUsage?: { inputTokens: number; outputTokens: number } }> = [];
@@ -311,7 +314,10 @@ export async function registerRoutes(
         }
       }
 
-      const orchestrator = new PoetiqOrchestrator(providers as ProviderConfig[]);
+      const settings = await storage.getSettings();
+      const consensusMode = (settings?.consensusMode as "auto" | "exact" | "semantic") || "auto";
+      
+      const orchestrator = new PoetiqOrchestrator(providers as ProviderConfig[], consensusMode);
       let fullResponse = "";
       let stepNumber = 0;
       const pendingSteps: Array<{ provider: string; model: string; action: string; content: string; stepNumber: number; tokenUsage?: { inputTokens: number; outputTokens: number } }> = [];

@@ -39,7 +39,8 @@ import {
   sendChatMessage,
   fetchSettings,
   fetchReasoningSteps,
-  type ProviderConfig 
+  type ProviderConfig,
+  type ConsensusMode 
 } from "@/lib/api";
 import { FileUploader, type FileAttachment } from "@/components/FileUploader";
 
@@ -69,6 +70,7 @@ export default function Chat() {
     { id: "openai", name: "OpenAI", enabled: true, model: "gpt-5" },
     { id: "anthropic", name: "Anthropic", enabled: true, model: "claude-sonnet-4-5" }
   ]);
+  const [consensusMode, setConsensusMode] = useState<ConsensusMode>("auto");
   const [showReasoning, setShowReasoning] = useState(false);
   const [reasoningSteps, setReasoningSteps] = useState<ReasoningStep[]>([]);
   const [streamingReasoning, setStreamingReasoning] = useState<ReasoningStep[]>([]);
@@ -177,6 +179,9 @@ export default function Chat() {
       const settings = await fetchSettings();
       if (settings.providers && Array.isArray(settings.providers) && settings.providers.length > 0) {
         setProviders(settings.providers as ProviderConfig[]);
+      }
+      if (settings.consensusMode) {
+        setConsensusMode(settings.consensusMode as ConsensusMode);
       }
     } catch (error) {
       console.error("Failed to load settings:", error);
@@ -420,7 +425,12 @@ export default function Chat() {
         {activeTab === "settings" ? (
           <main className="flex-1 p-6 overflow-y-auto">
             <div className="max-w-4xl mx-auto">
-              <SettingsTab providers={providers} onProvidersChange={setProviders} />
+              <SettingsTab 
+                providers={providers} 
+                onProvidersChange={setProviders}
+                consensusMode={consensusMode}
+                onConsensusModeChange={setConsensusMode}
+              />
             </div>
           </main>
         ) : (

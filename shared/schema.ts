@@ -35,6 +35,7 @@ export const reasoningSteps = pgTable("reasoning_steps", {
 export const settings = pgTable("settings", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   providers: jsonb("providers").notNull(),
+  consensusMode: varchar("consensus_mode", { length: 20 }).default("auto").notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 

@@ -474,7 +474,11 @@ export default function GeneralSolver() {
                                 <CheckCircle2 className="w-4 h-4" />
                               </div>
 
-                              <div className="bg-white p-4 rounded-lg border border-neutral-200 shadow-sm hover:shadow-md transition-shadow">
+                              <div 
+                                className="bg-white p-4 rounded-lg border border-neutral-200 shadow-sm hover:shadow-md transition-shadow cursor-pointer"
+                                onClick={() => toggleStep(step.id)}
+                                data-testid={`reasoning-step-toggle-${step.id}`}
+                              >
                                 <div className="flex items-start justify-between gap-3 mb-2">
                                   <div className="flex-1">
                                     <div className="flex items-center gap-2 mb-1">
@@ -484,8 +488,18 @@ export default function GeneralSolver() {
                                       <Badge variant="outline" className="text-[10px]">
                                         {step.action}
                                       </Badge>
+                                      {step.content.length > 80 && (
+                                        <span className="text-[10px] text-indigo-500 ml-auto">
+                                          {isExpanded ? "Click to collapse" : "Click to expand"}
+                                        </span>
+                                      )}
                                     </div>
-                                    <p className="text-sm text-neutral-700 font-medium">{step.content}</p>
+                                    <p className={cn(
+                                      "text-sm text-neutral-700 font-medium transition-all",
+                                      !isExpanded && step.content.length > 80 && "line-clamp-2"
+                                    )}>
+                                      {step.content}
+                                    </p>
                                     <p className="text-xs text-neutral-500 mt-1">Model: {step.model}</p>
                                   </div>
                                 </div>

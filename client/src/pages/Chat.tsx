@@ -97,32 +97,19 @@ export default function Chat() {
     }
   };
 
-  const CodeBlock = ({ children, className }: { children?: React.ReactNode; className?: string }) => {
+  const CodeBlock = ({ children, className, ...props }: { children?: React.ReactNode; className?: string; node?: any }) => {
     const codeContent = String(children).replace(/\n$/, '');
     const codeId = `code-${Math.random().toString(36).slice(2, 9)}`;
     const isInline = !className;
     
     if (isInline) {
-      return <code className="bg-neutral-200 px-1.5 py-0.5 rounded text-sm">{children}</code>;
+      return <code className="bg-neutral-200 px-1.5 py-0.5 rounded text-sm font-mono">{children}</code>;
     }
     
     return (
-      <div className="relative group/code">
-        <Button
-          variant="ghost"
-          size="sm"
-          className="absolute top-2 right-2 opacity-0 group-hover/code:opacity-100 transition-opacity h-7 px-2 bg-neutral-700 hover:bg-neutral-600 text-neutral-300"
-          onClick={() => copyCodeToClipboard(codeContent, codeId)}
-          data-testid={`button-copy-code-${codeId}`}
-        >
-          {copiedCodeId === codeId ? (
-            <><Check className="w-3 h-3 mr-1" /> Copied</>
-          ) : (
-            <><Copy className="w-3 h-3 mr-1" /> Copy</>
-          )}
-        </Button>
-        <pre className="!m-0"><code className={cn(className, "text-neutral-100 block")}>{children}</code></pre>
-      </div>
+      <code className="block text-neutral-100 font-mono text-sm whitespace-pre overflow-x-auto" {...props}>
+        {children}
+      </code>
     );
   };
   

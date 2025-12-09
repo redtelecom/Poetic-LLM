@@ -157,7 +157,7 @@ export function Sidebar({ conversations, activeId, onSelect, onNew, onDelete, on
               </div>
 
               {editingId !== conv.id && (
-                <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                <div className="flex items-center gap-0.5 shrink-0">
                   <Button
                     variant="ghost"
                     size="icon"

@@ -121,7 +121,7 @@ export default function Chat() {
             <><Copy className="w-3 h-3 mr-1" /> Copy</>
           )}
         </Button>
-        <pre className="!m-0"><code className={cn(className, "text-neutral-100 block whitespace-pre-wrap")}>{children}</code></pre>
+        <pre className="!m-0"><code className={cn(className, "text-neutral-100 block")}>{children}</code></pre>
       </div>
     );
   };

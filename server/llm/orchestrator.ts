@@ -248,8 +248,11 @@ Always provide working Python code that prints the solution.`;
     });
 
     if (solved) {
-      const finalResponse = `${verifiedResponse}\n\n**Execution Result:**\n\`\`\`\n${executionOutput}\n\`\`\``;
-      for await (const chunk of this.yieldBufferedContent(finalResponse)) {
+      const explanationText = verifiedResponse.replace(/```[\s\S]*?```/g, "").trim();
+      const cleanAnswer = explanationText 
+        ? `${explanationText}\n\n**Result:**\n\`\`\`\n${executionOutput}\n\`\`\``
+        : `**Result:**\n\`\`\`\n${executionOutput}\n\`\`\``;
+      for await (const chunk of this.yieldBufferedContent(cleanAnswer)) {
         yield chunk;
       }
     } else {

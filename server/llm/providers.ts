@@ -173,18 +173,40 @@ export async function* streamOpenAI(
   }
 }
 
+function parseDataUrl(dataUrl: string): { mediaType: string; data: string } | null {
+  const match = dataUrl.match(/^data:([^;]+);base64,(.+)$/);
+  if (match) {
+    return { mediaType: match[1], data: match[2] };
+  }
+  return null;
+}
+
 function buildAnthropicMessages(messages: Array<MessageContent>): any[] {
   return messages.filter(m => m.role !== "system").map(m => {
     if (m.images && m.images.length > 0) {
       const content: any[] = [{ type: "text", text: m.content }];
       for (const img of m.images) {
-        content.push({
-          type: "image",
-          source: {
-            type: "url",
-            url: img.url
-          }
-        });
+        // Parse data URL to extract base64 data
+        const parsed = parseDataUrl(img.url);
+        if (parsed) {
+          content.push({
+            type: "image",
+            source: {
+              type: "base64",
+              media_type: parsed.mediaType,
+              data: parsed.data
+            }
+          });
+        } else {
+          // For regular URLs, try URL format (may not be supported by all models)
+          content.push({
+            type: "image",
+            source: {
+              type: "url",
+              url: img.url
+            }
+          });
+        }
       }
       return { role: m.role as "user" | "assistant", content };
     }

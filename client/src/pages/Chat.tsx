@@ -73,6 +73,7 @@ export default function Chat() {
   const [streamingReasoning, setStreamingReasoning] = useState<ReasoningStep[]>([]);
   const [tokenUsage, setTokenUsage] = useState<{ inputTokens: number; outputTokens: number } | null>(null);
   const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
+  const [copiedCodeId, setCopiedCodeId] = useState<string | null>(null);
   const [computeBudget, setComputeBudget] = useState([50]);
   const [attachments, setAttachments] = useState<FileAttachment[]>([]);
 
@@ -84,6 +85,45 @@ export default function Chat() {
     } catch (err) {
       console.error("Failed to copy:", err);
     }
+  };
+
+  const copyCodeToClipboard = async (code: string, codeId: string) => {
+    try {
+      await navigator.clipboard.writeText(code);
+      setCopiedCodeId(codeId);
+      setTimeout(() => setCopiedCodeId(null), 2000);
+    } catch (err) {
+      console.error("Failed to copy code:", err);
+    }
+  };
+
+  const CodeBlock = ({ children, className }: { children?: React.ReactNode; className?: string }) => {
+    const codeContent = String(children).replace(/\n$/, '');
+    const codeId = `code-${Math.random().toString(36).slice(2, 9)}`;
+    const isInline = !className;
+    
+    if (isInline) {
+      return <code className="bg-neutral-200 px-1.5 py-0.5 rounded text-sm">{children}</code>;
+    }
+    
+    return (
+      <div className="relative group/code">
+        <Button
+          variant="ghost"
+          size="sm"
+          className="absolute top-2 right-2 opacity-0 group-hover/code:opacity-100 transition-opacity h-7 px-2 bg-neutral-700 hover:bg-neutral-600 text-neutral-300"
+          onClick={() => copyCodeToClipboard(codeContent, codeId)}
+          data-testid={`button-copy-code-${codeId}`}
+        >
+          {copiedCodeId === codeId ? (
+            <><Check className="w-3 h-3 mr-1" /> Copied</>
+          ) : (
+            <><Copy className="w-3 h-3 mr-1" /> Copy</>
+          )}
+        </Button>
+        <code className={className}>{children}</code>
+      </div>
+    );
   };
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -426,8 +466,8 @@ export default function Chat() {
                             </div>
                           ) : (
                             <div className="flex-1 min-w-0 relative group">
-                              <div className="prose prose-sm max-w-none prose-neutral break-words [&_pre]:overflow-x-auto [&_pre]:max-w-full [&_pre]:bg-neutral-900 [&_pre]:text-neutral-100 [&_pre]:rounded-lg [&_pre]:p-4 [&_pre]:font-mono [&_code]:break-words [&_p]:break-words">
-                                <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                              <div className="prose prose-sm max-w-none prose-neutral break-words [&_pre]:overflow-x-auto [&_pre]:max-w-full [&_pre]:bg-neutral-900 [&_pre]:text-neutral-100 [&_pre]:rounded-lg [&_pre]:p-4 [&_pre]:font-mono [&_p]:break-words">
+                                <ReactMarkdown remarkPlugins={[remarkGfm]} components={{ code: CodeBlock }}>
                                   {message.content}
                                 </ReactMarkdown>
                               </div>
@@ -460,8 +500,8 @@ export default function Chat() {
                             <Bot className="w-4 h-4 text-white" />
                           </div>
                           <div className="flex-1 min-w-0">
-                            <div className="prose prose-sm max-w-none prose-neutral break-words [&_pre]:overflow-x-auto [&_pre]:max-w-full [&_pre]:bg-neutral-900 [&_pre]:text-neutral-100 [&_pre]:rounded-lg [&_pre]:p-4 [&_pre]:font-mono [&_code]:break-words [&_p]:break-words">
-                              <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                            <div className="prose prose-sm max-w-none prose-neutral break-words [&_pre]:overflow-x-auto [&_pre]:max-w-full [&_pre]:bg-neutral-900 [&_pre]:text-neutral-100 [&_pre]:rounded-lg [&_pre]:p-4 [&_pre]:font-mono [&_p]:break-words">
+                              <ReactMarkdown remarkPlugins={[remarkGfm]} components={{ code: CodeBlock }}>
                                 {streamingContent}
                               </ReactMarkdown>
                               <span className="inline-block w-2 h-4 bg-indigo-600 ml-1 animate-pulse rounded-sm" />
@@ -585,8 +625,8 @@ export default function Chat() {
                       </div>
                     ) : (
                       <div className="flex-1 min-w-0">
-                        <div className="prose prose-sm max-w-none prose-neutral break-words overflow-hidden [&_pre]:overflow-x-auto [&_pre]:max-w-full [&_pre]:bg-neutral-900 [&_pre]:text-neutral-100 [&_pre]:rounded-lg [&_pre]:p-3 [&_pre]:text-xs [&_code]:break-all [&_p]:break-words">
-                          <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                        <div className="prose prose-sm max-w-none prose-neutral break-words [&_pre]:overflow-x-auto [&_pre]:max-w-full [&_pre]:bg-neutral-900 [&_pre]:text-neutral-100 [&_pre]:rounded-lg [&_pre]:p-3 [&_pre]:text-xs [&_p]:break-words">
+                          <ReactMarkdown remarkPlugins={[remarkGfm]} components={{ code: CodeBlock }}>
                             {message.content}
                           </ReactMarkdown>
                         </div>
@@ -606,8 +646,8 @@ export default function Chat() {
                       <Bot className="w-3.5 h-3.5 text-white" />
                     </div>
                     <div className="flex-1 min-w-0">
-                      <div className="prose prose-sm max-w-none prose-neutral break-words overflow-hidden [&_pre]:overflow-x-auto [&_pre]:max-w-full [&_pre]:bg-neutral-900 [&_pre]:text-neutral-100 [&_pre]:rounded-lg [&_pre]:p-3 [&_pre]:text-xs [&_code]:break-all [&_p]:break-words">
-                        <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                      <div className="prose prose-sm max-w-none prose-neutral break-words [&_pre]:overflow-x-auto [&_pre]:max-w-full [&_pre]:bg-neutral-900 [&_pre]:text-neutral-100 [&_pre]:rounded-lg [&_pre]:p-3 [&_pre]:text-xs [&_p]:break-words">
+                        <ReactMarkdown remarkPlugins={[remarkGfm]} components={{ code: CodeBlock }}>
                           {streamingContent}
                         </ReactMarkdown>
                         <span className="inline-block w-2 h-4 bg-indigo-600 ml-1 animate-pulse rounded-sm" />

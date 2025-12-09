@@ -97,17 +97,13 @@ export default function Chat() {
     }
   };
 
-  const CodeBlock = ({ children, className, ...props }: { children?: React.ReactNode; className?: string; node?: any }) => {
-    const codeContent = String(children).replace(/\n$/, '');
-    const codeId = `code-${Math.random().toString(36).slice(2, 9)}`;
-    const isInline = !className;
-    
-    if (isInline) {
-      return <code className="bg-neutral-200 px-1.5 py-0.5 rounded text-sm font-mono">{children}</code>;
+  const CodeBlock = ({ children, className, inline, ...props }: { children?: React.ReactNode; className?: string; inline?: boolean; node?: any }) => {
+    if (inline) {
+      return <code className="bg-neutral-200 text-neutral-800 px-1.5 py-0.5 rounded text-sm font-mono">{children}</code>;
     }
     
     return (
-      <code className="block text-neutral-100 font-mono text-sm whitespace-pre overflow-x-auto" {...props}>
+      <code style={{ color: '#e5e5e5', display: 'block', fontFamily: 'ui-monospace, monospace', fontSize: '14px', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }} {...props}>
         {children}
       </code>
     );

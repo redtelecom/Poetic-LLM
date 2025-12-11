@@ -11,6 +11,11 @@ export const anthropic = new Anthropic({
   baseURL: process.env.AI_INTEGRATIONS_ANTHROPIC_BASE_URL,
 });
 
+export const openrouter = new OpenAI({
+  baseURL: process.env.AI_INTEGRATIONS_OPENROUTER_BASE_URL,
+  apiKey: process.env.AI_INTEGRATIONS_OPENROUTER_API_KEY
+});
+
 export interface ProviderConfig {
   id: string;
   name: string;
@@ -309,6 +314,60 @@ export async function* streamAnthropic(
       }
       if (event.type === "message_start" && event.message?.usage) {
         usage.inputTokens = event.message.usage.input_tokens || 0;
+      }
+    }
+  } finally {
+    onUsage?.(usage);
+  }
+}
+
+export async function callOpenRouter(
+  model: string,
+  messages: Array<MessageContent>
+): Promise<{ content: string; usage: TokenUsage }> {
+  const formattedMessages = buildOpenAIMessages(messages);
+  const response = await openrouter.chat.completions.create({
+    model,
+    messages: formattedMessages,
+    max_completion_tokens: 8192,
+  });
+  return {
+    content: response.choices[0]?.message?.content || "",
+    usage: {
+      inputTokens: response.usage?.prompt_tokens || 0,
+      outputTokens: response.usage?.completion_tokens || 0,
+    }
+  };
+}
+
+export async function* streamOpenRouter(
+  model: string,
+  messages: Array<MessageContent>,
+  onUsage?: (usage: TokenUsage) => void
+): AsyncGenerator<string> {
+  const formattedMessages = buildOpenAIMessages(messages);
+  
+  const stream = await openrouter.chat.completions.create({
+    model,
+    messages: formattedMessages,
+    max_completion_tokens: 8192,
+    stream: true,
+    stream_options: { include_usage: true },
+  });
+
+  let usage: TokenUsage = { inputTokens: 0, outputTokens: 0 };
+
+  try {
+    for await (const chunk of stream) {
+      const content = chunk.choices[0]?.delta?.content;
+      if (content) {
+        yield content;
+      }
+      if (chunk.usage) {
+        usage = {
+          inputTokens: chunk.usage.prompt_tokens || 0,
+          outputTokens: chunk.usage.completion_tokens || 0,
+        };
       }
     }
   } finally {

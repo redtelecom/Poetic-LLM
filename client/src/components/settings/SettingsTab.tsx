@@ -32,6 +32,18 @@ const PROVIDER_MODELS: Record<string, Model[]> = {
     { id: "claude-opus-4-5", name: "Claude Opus 4.5", cost: "$15.00/1M" },
     { id: "claude-sonnet-4-5", name: "Claude Sonnet 4.5", cost: "$3.00/1M" },
     { id: "claude-haiku-4-5", name: "Claude Haiku 4.5", cost: "$0.25/1M" },
+  ],
+  openrouter: [
+    { id: "meta-llama/llama-3.3-70b-instruct", name: "Llama 3.3 70B", cost: "$0.35/1M" },
+    { id: "meta-llama/llama-3.1-405b-instruct", name: "Llama 3.1 405B", cost: "$2.00/1M" },
+    { id: "mistralai/mistral-large-2411", name: "Mistral Large", cost: "$2.00/1M" },
+    { id: "mistralai/mistral-small-2503", name: "Mistral Small", cost: "$0.10/1M" },
+    { id: "qwen/qwen-2.5-72b-instruct", name: "Qwen 2.5 72B", cost: "$0.35/1M" },
+    { id: "deepseek/deepseek-chat-v3-0324", name: "DeepSeek Chat V3", cost: "$0.14/1M" },
+    { id: "deepseek/deepseek-r1", name: "DeepSeek R1", cost: "$0.55/1M" },
+    { id: "x-ai/grok-2-1212", name: "Grok-2", cost: "$2.00/1M" },
+    { id: "google/gemini-2.0-flash-001", name: "Gemini 2.0 Flash", cost: "$0.10/1M" },
+    { id: "google/gemini-2.5-pro-preview-03-25", name: "Gemini 2.5 Pro", cost: "$1.25/1M" },
   ]
 };
 

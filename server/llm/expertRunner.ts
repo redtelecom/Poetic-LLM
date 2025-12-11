@@ -4,7 +4,7 @@ import * as path from "path";
 import * as os from "os";
 import type { ExpertConfig, ExpertResult } from "./types";
 import type { MessageContent, TokenUsage, ReasoningStep } from "./providers";
-import { streamOpenAI, streamAnthropic } from "./providers";
+import { streamOpenAI, streamAnthropic, streamOpenRouter } from "./providers";
 import { canonicalizeAnswer, extractFinalAnswer } from "./consensus";
 
 export class ExpertRunner {
@@ -186,6 +186,10 @@ export class ExpertRunner {
       }
     } else if (this.config.id === "anthropic") {
       for await (const chunk of streamAnthropic(this.config.model, messages, handleUsage)) {
+        content += chunk;
+      }
+    } else if (this.config.id === "openrouter") {
+      for await (const chunk of streamOpenRouter(this.config.model, messages, handleUsage)) {
         content += chunk;
       }
     }

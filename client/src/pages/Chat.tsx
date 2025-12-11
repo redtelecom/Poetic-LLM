@@ -68,7 +68,8 @@ export default function Chat() {
   const [streamingContent, setStreamingContent] = useState("");
   const [providers, setProviders] = useState<ProviderConfig[]>([
     { id: "openai", name: "OpenAI", enabled: true, model: "gpt-5" },
-    { id: "anthropic", name: "Anthropic", enabled: true, model: "claude-sonnet-4-5" }
+    { id: "anthropic", name: "Anthropic", enabled: true, model: "claude-sonnet-4-5" },
+    { id: "openrouter", name: "OpenRouter", enabled: false, model: "meta-llama/llama-3.3-70b-instruct" }
   ]);
   const [consensusMode, setConsensusMode] = useState<ConsensusMode>("auto");
   const [showReasoning, setShowReasoning] = useState(false);
@@ -178,7 +179,17 @@ export default function Chat() {
     try {
       const settings = await fetchSettings();
       if (settings.providers && Array.isArray(settings.providers) && settings.providers.length > 0) {
-        setProviders(settings.providers as ProviderConfig[]);
+        const savedProviders = settings.providers as ProviderConfig[];
+        const defaultProviders: ProviderConfig[] = [
+          { id: "openai", name: "OpenAI", enabled: true, model: "gpt-5" },
+          { id: "anthropic", name: "Anthropic", enabled: true, model: "claude-sonnet-4-5" },
+          { id: "openrouter", name: "OpenRouter", enabled: false, model: "meta-llama/llama-3.3-70b-instruct" }
+        ];
+        const mergedProviders = defaultProviders.map(defaultProvider => {
+          const saved = savedProviders.find(p => p.id === defaultProvider.id);
+          return saved ? saved : defaultProvider;
+        });
+        setProviders(mergedProviders);
       }
       if (settings.consensusMode) {
         setConsensusMode(settings.consensusMode as ConsensusMode);

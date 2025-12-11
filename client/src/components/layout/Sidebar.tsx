@@ -157,25 +157,25 @@ export function Sidebar({ conversations, activeId, onSelect, onNew, onDelete, on
               </div>
 
               {editingId !== conv.id && (
-                <div className="flex items-center gap-1.5 shrink-0 ml-2">
-                  <Button
-                    variant="outline"
-                    size="icon"
-                    className="h-8 w-8 bg-white text-indigo-600 border-indigo-300 hover:bg-indigo-50 hover:text-indigo-700 hover:border-indigo-400 shadow-sm"
+                <div className="flex items-center gap-2 shrink-0 ml-2">
+                  <button
+                    type="button"
+                    className="h-7 px-2 rounded bg-blue-600 text-white text-xs font-medium hover:bg-blue-700 flex items-center gap-1"
                     onClick={(e) => handleEditClick(e, conv)}
                     data-testid={`button-edit-${conv.id}`}
                   >
-                    <Pencil className="w-4 h-4" />
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="icon"
-                    className="h-8 w-8 bg-white text-red-500 border-red-300 hover:bg-red-50 hover:text-red-600 hover:border-red-400 shadow-sm"
+                    <Pencil className="w-3 h-3" />
+                    Edit
+                  </button>
+                  <button
+                    type="button"
+                    className="h-7 px-2 rounded bg-red-600 text-white text-xs font-medium hover:bg-red-700 flex items-center gap-1"
                     onClick={(e) => handleDeleteClick(e, conv.id)}
                     data-testid={`button-delete-${conv.id}`}
                   >
-                    <Trash2 className="w-4 h-4" />
-                  </Button>
+                    <Trash2 className="w-3 h-3" />
+                    Delete
+                  </button>
                 </div>
               )}
             </div>

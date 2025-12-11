@@ -94,26 +94,25 @@ export function Sidebar({ conversations, activeId, onSelect, onNew, onDelete, on
 
       <ScrollArea className="flex-1 px-3">
         <div className="flex flex-col gap-1 pb-4">
-          <div className="text-xs font-semibold text-neutral-400 uppercase tracking-wider px-3 mb-2 mt-2 flex items-center justify-between">
-            <span>Recent</span>
-            <span className="text-[10px] text-red-500 font-bold animate-pulse">v2.0</span>
+          <div className="text-xs font-semibold uppercase tracking-wider px-3 mb-2 mt-2 bg-yellow-300 text-black py-2">
+            MY CONVERSATIONS - UPDATED CODE
           </div>
           {filtered.map((conv) => (
             <div 
               key={conv.id}
               className={cn(
-                "group flex items-center justify-between rounded-md p-2 text-sm transition-all hover:bg-neutral-200/50 cursor-pointer border border-transparent",
+                "group rounded-md p-2 text-sm transition-all hover:bg-neutral-200/50 cursor-pointer border border-transparent",
                 activeId === conv.id ? "bg-white border-neutral-200 shadow-sm text-neutral-900 font-medium" : "text-neutral-600"
               )}
               onClick={() => editingId !== conv.id && onSelect(conv.id)}
               data-testid={`sidebar-conversation-${conv.id}`}
             >
-              <div className="flex items-center gap-3 overflow-hidden flex-1 min-w-0">
+              <div className="flex items-center gap-3">
                 <MessageSquare className={cn(
                   "w-4 h-4 shrink-0",
                   activeId === conv.id ? "text-indigo-600" : "text-neutral-400"
                 )} />
-                <div className="flex flex-col overflow-hidden flex-1 min-w-0">
+                <div className="flex flex-col flex-1 min-w-0">
                   {editingId === conv.id ? (
                     <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
                       <Input
@@ -156,29 +155,26 @@ export function Sidebar({ conversations, activeId, onSelect, onNew, onDelete, on
                   )}
                 </div>
               </div>
-
-              {editingId !== conv.id && (
-                <div className="flex items-center gap-2 shrink-0 ml-2">
-                  <button
-                    type="button"
-                    className="h-7 px-2 rounded bg-blue-600 text-white text-xs font-medium hover:bg-blue-700 flex items-center gap-1"
-                    onClick={(e) => handleEditClick(e, conv)}
-                    data-testid={`button-edit-${conv.id}`}
-                  >
-                    <Pencil className="w-3 h-3" />
-                    Edit
-                  </button>
-                  <button
-                    type="button"
-                    className="h-7 px-2 rounded bg-red-600 text-white text-xs font-medium hover:bg-red-700 flex items-center gap-1"
-                    onClick={(e) => handleDeleteClick(e, conv.id)}
-                    data-testid={`button-delete-${conv.id}`}
-                  >
-                    <Trash2 className="w-3 h-3" />
-                    Delete
-                  </button>
-                </div>
-              )}
+              <div className="flex items-center gap-2 mt-2 pl-7">
+                <button
+                  type="button"
+                  className="h-7 px-3 rounded bg-blue-600 text-white text-xs font-medium hover:bg-blue-700 flex items-center gap-1"
+                  onClick={(e) => handleEditClick(e, conv)}
+                  data-testid={`button-edit-${conv.id}`}
+                >
+                  <Pencil className="w-3 h-3" />
+                  Edit
+                </button>
+                <button
+                  type="button"
+                  className="h-7 px-3 rounded bg-red-600 text-white text-xs font-medium hover:bg-red-700 flex items-center gap-1"
+                  onClick={(e) => handleDeleteClick(e, conv.id)}
+                  data-testid={`button-delete-${conv.id}`}
+                >
+                  <Trash2 className="w-3 h-3" />
+                  Delete
+                </button>
+              </div>
             </div>
           ))}
 

@@ -157,26 +157,26 @@ export function Sidebar({ conversations, activeId, onSelect, onNew, onDelete, on
                   </div>
                 </div>
                 {editingId !== conv.id && (
-                  <div className="flex items-center gap-0.5 shrink-0">
+                  <div className="flex items-center gap-1 shrink-0">
                     <button
                       type="button"
-                      className="h-6 w-6 rounded flex items-center justify-center text-neutral-400 hover:text-indigo-600 hover:bg-indigo-50 transition-colors"
+                      className="h-7 w-7 rounded-md border border-neutral-200 bg-white flex items-center justify-center text-neutral-600 hover:text-indigo-600 hover:border-indigo-300 hover:bg-indigo-50 transition-colors shadow-sm"
                       onClick={(e) => handleEditClick(e, conv)}
                       data-testid={`button-edit-${conv.id}`}
                       title="Edit conversation"
                       aria-label="Edit conversation"
                     >
-                      <Pencil className="w-3 h-3" />
+                      <Pencil className="w-3.5 h-3.5" />
                     </button>
                     <button
                       type="button"
-                      className="h-6 w-6 rounded flex items-center justify-center text-neutral-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+                      className="h-7 w-7 rounded-md border border-neutral-200 bg-white flex items-center justify-center text-neutral-600 hover:text-red-600 hover:border-red-300 hover:bg-red-50 transition-colors shadow-sm"
                       onClick={(e) => handleDeleteClick(e, conv.id)}
                       data-testid={`button-delete-${conv.id}`}
                       title="Delete conversation"
                       aria-label="Delete conversation"
                     >
-                      <Trash2 className="w-3 h-3" />
+                      <Trash2 className="w-3.5 h-3.5" />
                     </button>
                   </div>
                 )}

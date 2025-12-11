@@ -8,6 +8,21 @@ import { PoetiqOrchestrator } from "./llm/orchestrator";
 import type { ProviderConfig, TokenUsage } from "./llm/providers";
 import { ObjectStorageService, ObjectNotFoundError } from "./objectStorage";
 
+async function mergeProviderApiKeys(requestProviders: ProviderConfig[]): Promise<ProviderConfig[]> {
+  const settings = await storage.getSettings();
+  const storedProviders = (settings?.providers as ProviderConfig[]) || [];
+  
+  return requestProviders.map(reqProvider => {
+    if (reqProvider.isCustom && reqProvider.apiKey === "••••••••") {
+      const stored = storedProviders.find(p => p.id === reqProvider.id);
+      if (stored?.apiKey) {
+        return { ...reqProvider, apiKey: stored.apiKey };
+      }
+    }
+    return reqProvider;
+  });
+}
+
 const MAX_IMAGE_DIMENSION = 2048;
 const MAX_IMAGE_SIZE_BYTES = 4 * 1024 * 1024; // 4MB max for AI APIs
 
@@ -199,7 +214,8 @@ export async function registerRoutes(
       const settings = await storage.getSettings();
       const consensusMode = (settings?.consensusMode as "auto" | "exact" | "semantic") || "auto";
       
-      const orchestrator = new PoetiqOrchestrator(providers as ProviderConfig[], consensusMode);
+      const mergedProviders = await mergeProviderApiKeys(providers as ProviderConfig[]);
+      const orchestrator = new PoetiqOrchestrator(mergedProviders, consensusMode);
       let fullResponse = "";
       let stepNumber = 0;
       const pendingSteps: Array<{ provider: string; model: string; action: string; content: string; stepNumber: number; tokenUsage?: { inputTokens: number; outputTokens: number } }> = [];
@@ -295,7 +311,15 @@ export async function registerRoutes(
   app.get("/api/settings", async (req, res) => {
     try {
       const settings = await storage.getSettings();
-      res.json(settings || { providers: [] });
+      if (settings?.providers && Array.isArray(settings.providers)) {
+        const sanitizedProviders = settings.providers.map((p: any) => ({
+          ...p,
+          apiKey: p.apiKey ? "••••••••" : undefined
+        }));
+        res.json({ ...settings, providers: sanitizedProviders });
+      } else {
+        res.json(settings || { providers: [] });
+      }
     } catch (error) {
       console.error("Error fetching settings:", error);
       res.status(500).json({ error: "Failed to fetch settings" });
@@ -305,8 +329,33 @@ export async function registerRoutes(
   app.post("/api/settings", async (req, res) => {
     try {
       const data = insertSettingsSchema.parse(req.body);
+      
+      if (data.providers && Array.isArray(data.providers)) {
+        const existingSettings = await storage.getSettings();
+        const storedProviders = (existingSettings?.providers as ProviderConfig[]) || [];
+        
+        data.providers = data.providers.map((p: any) => {
+          if (p.isCustom && p.apiKey === "••••••••") {
+            const stored = storedProviders.find((sp: any) => sp.id === p.id);
+            if (stored?.apiKey) {
+              return { ...p, apiKey: stored.apiKey };
+            }
+          }
+          return p;
+        });
+      }
+      
       const settings = await storage.updateSettings(data);
-      res.json(settings);
+      
+      if (settings?.providers && Array.isArray(settings.providers)) {
+        const sanitizedProviders = settings.providers.map((p: any) => ({
+          ...p,
+          apiKey: p.apiKey ? "••••••••" : undefined
+        }));
+        res.json({ ...settings, providers: sanitizedProviders });
+      } else {
+        res.json(settings);
+      }
     } catch (error) {
       console.error("Error updating settings:", error);
       res.status(400).json({ error: "Invalid settings data" });
@@ -373,7 +422,8 @@ export async function registerRoutes(
       const settings = await storage.getSettings();
       const consensusMode = (settings?.consensusMode as "auto" | "exact" | "semantic") || "auto";
       
-      const orchestrator = new PoetiqOrchestrator(providers as ProviderConfig[], consensusMode);
+      const mergedProviders = await mergeProviderApiKeys(providers as ProviderConfig[]);
+      const orchestrator = new PoetiqOrchestrator(mergedProviders, consensusMode);
       let fullResponse = "";
       let stepNumber = 0;
       const pendingSteps: Array<{ provider: string; model: string; action: string; content: string; stepNumber: number; tokenUsage?: { inputTokens: number; outputTokens: number } }> = [];

@@ -21,6 +21,88 @@ export interface ProviderConfig {
   name: string;
   enabled: boolean;
   model: string;
+  isCustom?: boolean;
+  baseUrl?: string;
+  apiKey?: string;
+}
+
+const customClientCache = new Map<string, OpenAI>();
+
+export function getCustomClient(provider: ProviderConfig): OpenAI {
+  if (!provider.baseUrl) {
+    throw new Error(`Custom provider ${provider.name} requires a baseUrl`);
+  }
+  
+  const cacheKey = `${provider.id}:${provider.baseUrl}`;
+  let client = customClientCache.get(cacheKey);
+  
+  if (!client) {
+    client = new OpenAI({
+      baseURL: provider.baseUrl,
+      apiKey: provider.apiKey || "not-required"
+    });
+    customClientCache.set(cacheKey, client);
+  }
+  
+  return client;
+}
+
+export async function callCustomProvider(
+  provider: ProviderConfig,
+  messages: Array<MessageContent>
+): Promise<{ content: string; usage: TokenUsage }> {
+  const client = getCustomClient(provider);
+  const formattedMessages = buildOpenAIMessages(messages);
+  
+  const response = await client.chat.completions.create({
+    model: provider.model,
+    messages: formattedMessages,
+    max_completion_tokens: 8192,
+  });
+  
+  return {
+    content: response.choices[0]?.message?.content || "",
+    usage: {
+      inputTokens: response.usage?.prompt_tokens || 0,
+      outputTokens: response.usage?.completion_tokens || 0,
+    }
+  };
+}
+
+export async function* streamCustomProvider(
+  provider: ProviderConfig,
+  messages: Array<MessageContent>,
+  onUsage?: (usage: TokenUsage) => void
+): AsyncGenerator<string> {
+  const client = getCustomClient(provider);
+  const formattedMessages = buildOpenAIMessages(messages);
+  
+  const stream = await client.chat.completions.create({
+    model: provider.model,
+    messages: formattedMessages,
+    max_completion_tokens: 8192,
+    stream: true,
+    stream_options: { include_usage: true },
+  });
+
+  let usage: TokenUsage = { inputTokens: 0, outputTokens: 0 };
+
+  try {
+    for await (const chunk of stream) {
+      const content = chunk.choices[0]?.delta?.content;
+      if (content) {
+        yield content;
+      }
+      if (chunk.usage) {
+        usage = {
+          inputTokens: chunk.usage.prompt_tokens || 0,
+          outputTokens: chunk.usage.completion_tokens || 0,
+        };
+      }
+    }
+  } finally {
+    onUsage?.(usage);
+  }
 }
 
 export interface ImageAttachment {

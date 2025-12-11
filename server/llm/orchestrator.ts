@@ -1,4 +1,4 @@
-import { callOpenAI, callAnthropic, callOpenRouter, streamOpenAI, streamAnthropic, streamOpenRouter, type ProviderConfig, type ReasoningStep, type TokenUsage, type MessageContent } from "./providers";
+import { callOpenAI, callAnthropic, callOpenRouter, streamOpenAI, streamAnthropic, streamOpenRouter, callCustomProvider, streamCustomProvider, type ProviderConfig, type ReasoningStep, type TokenUsage, type MessageContent } from "./providers";
 import { spawn } from "child_process";
 import * as fs from "fs";
 import * as path from "path";
@@ -123,6 +123,10 @@ export class PoetiqOrchestrator {
       }
     } else if (provider.id === "openrouter") {
       for await (const chunk of streamOpenRouter(provider.model, messages, handleUsage)) {
+        content += chunk;
+      }
+    } else if (provider.isCustom) {
+      for await (const chunk of streamCustomProvider(provider, messages, handleUsage)) {
         content += chunk;
       }
     }
@@ -582,6 +586,11 @@ Output ONLY the Pine Script code wrapped in a \`\`\`pine code block.`;
         strategyPlan += chunk;
         yield chunk;
       }
+    } else if (provider.isCustom) {
+      for await (const chunk of streamCustomProvider(provider, analystMessages, handleAnalystUsage)) {
+        strategyPlan += chunk;
+        yield chunk;
+      }
     }
 
     accumulatedUsage.inputTokens += analystUsage.inputTokens;
@@ -630,6 +639,11 @@ Output ONLY the Pine Script code wrapped in a \`\`\`pine code block.`;
       }
     } else if (provider.id === "openrouter") {
       for await (const chunk of streamOpenRouter(provider.model, coderMessages, handleCoderUsage)) {
+        pineScriptCode += chunk;
+        yield chunk;
+      }
+    } else if (provider.isCustom) {
+      for await (const chunk of streamCustomProvider(provider, coderMessages, handleCoderUsage)) {
         pineScriptCode += chunk;
         yield chunk;
       }
@@ -1040,6 +1054,10 @@ Always provide working Python code that prints the solution.`;
       for await (const chunk of streamOpenRouter(provider.model, fullMessages)) {
         yield chunk;
       }
+    } else if (provider.isCustom) {
+      for await (const chunk of streamCustomProvider(provider, fullMessages)) {
+        yield chunk;
+      }
     }
   }
 
@@ -1118,6 +1136,9 @@ Always provide working Python code that prints the solution.`;
       } else if (provider.id === "openrouter") {
         const result = await callOpenRouter(provider.model, messages);
         title = result.content;
+      } else if (provider.isCustom) {
+        const result = await callCustomProvider(provider, messages);
+        title = result.content;
       }
       return title.trim().replace(/^["']|["']$/g, "").slice(0, 60);
     } catch (error) {
@@ -1148,6 +1169,9 @@ Always provide working Python code that prints the solution.`;
         summary = result.content;
       } else if (provider.id === "openrouter") {
         const result = await callOpenRouter(provider.model, messages);
+        summary = result.content;
+      } else if (provider.isCustom) {
+        const result = await callCustomProvider(provider, messages);
         summary = result.content;
       }
       return summary.trim();

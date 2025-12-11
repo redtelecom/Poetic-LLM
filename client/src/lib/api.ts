@@ -44,6 +44,9 @@ export interface ProviderConfig {
   name: string;
   enabled: boolean;
   model: string;
+  isCustom?: boolean;
+  baseUrl?: string;
+  apiKey?: string;
 }
 
 export interface StreamEvent {

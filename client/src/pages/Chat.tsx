@@ -180,16 +180,18 @@ export default function Chat() {
       const settings = await fetchSettings();
       if (settings.providers && Array.isArray(settings.providers) && settings.providers.length > 0) {
         const savedProviders = settings.providers as ProviderConfig[];
+        const defaultProviderIds = ["openai", "anthropic", "openrouter"];
         const defaultProviders: ProviderConfig[] = [
           { id: "openai", name: "OpenAI", enabled: true, model: "gpt-5" },
           { id: "anthropic", name: "Anthropic", enabled: true, model: "claude-sonnet-4-5" },
           { id: "openrouter", name: "OpenRouter", enabled: false, model: "meta-llama/llama-3.3-70b-instruct" }
         ];
-        const mergedProviders = defaultProviders.map(defaultProvider => {
+        const mergedDefaults = defaultProviders.map(defaultProvider => {
           const saved = savedProviders.find(p => p.id === defaultProvider.id);
           return saved ? saved : defaultProvider;
         });
-        setProviders(mergedProviders);
+        const customProviders = savedProviders.filter(p => !defaultProviderIds.includes(p.id));
+        setProviders([...mergedDefaults, ...customProviders]);
       }
       if (settings.consensusMode) {
         setConsensusMode(settings.consensusMode as ConsensusMode);

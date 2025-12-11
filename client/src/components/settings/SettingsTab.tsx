@@ -1,20 +1,25 @@
-import React, { useEffect } from "react";
+import React, { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Input } from "@/components/ui/input";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { 
   Settings2, 
   ShieldCheck, 
   Layers,
-  Info
+  Info,
+  Plus,
+  Trash2,
+  Link,
+  GitBranch
 } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 import { updateSettings, type ConsensusMode } from "@/lib/api";
 import type { ProviderConfig } from "@/lib/api";
-import { GitBranch } from "lucide-react";
 
 interface Model {
   id: string;
@@ -61,6 +66,14 @@ const CONSENSUS_MODES: { id: ConsensusMode; name: string; description: string }[
 ];
 
 export default function SettingsTab({ providers, onProvidersChange, consensusMode, onConsensusModeChange }: SettingsTabProps) {
+  const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
+  const [newProvider, setNewProvider] = useState({
+    name: "",
+    baseUrl: "",
+    apiKey: "",
+    model: ""
+  });
+
   const handleToggleProvider = (id: string, checked: boolean) => {
     const updated = providers.map(p => 
       p.id === id ? { ...p, enabled: checked } : p
@@ -80,6 +93,48 @@ export default function SettingsTab({ providers, onProvidersChange, consensusMod
       p.id === providerId ? { ...p, model: modelId } : p
     );
     onProvidersChange(updated);
+  };
+
+  const handleAddProvider = () => {
+    if (!newProvider.name || !newProvider.baseUrl || !newProvider.model) {
+      toast({
+        title: "Missing Fields",
+        description: "Please fill in provider name, API URL, and model name.",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    const id = `custom-${Date.now()}`;
+    const customProvider: ProviderConfig = {
+      id,
+      name: newProvider.name,
+      enabled: true,
+      model: newProvider.model,
+      isCustom: true,
+      baseUrl: newProvider.baseUrl,
+      apiKey: newProvider.apiKey
+    };
+
+    onProvidersChange([...providers, customProvider]);
+    setNewProvider({ name: "", baseUrl: "", apiKey: "", model: "" });
+    setIsAddDialogOpen(false);
+    
+    toast({
+      title: "Provider Added",
+      description: `${newProvider.name} has been added to your providers.`,
+    });
+  };
+
+  const handleDeleteProvider = (id: string) => {
+    const provider = providers.find(p => p.id === id);
+    if (provider?.isCustom) {
+      onProvidersChange(providers.filter(p => p.id !== id));
+      toast({
+        title: "Provider Removed",
+        description: `${provider.name} has been removed.`,
+      });
+    }
   };
 
   const handleSave = async () => {
@@ -147,42 +202,150 @@ export default function SettingsTab({ providers, onProvidersChange, consensusMod
                         Active
                       </Badge>
                     )}
+                    {provider.isCustom && (
+                      <Badge variant="outline" className="bg-purple-50 text-purple-700 border-purple-200 text-[10px]">
+                        Custom
+                      </Badge>
+                    )}
                   </div>
                   
                   <div className="pl-14">
                     <div className="flex items-center gap-4">
                       <Label className="text-xs text-neutral-500 uppercase font-medium min-w-[60px]">Model</Label>
-                      <Select 
-                        value={provider.model} 
-                        onValueChange={(val) => handleModelChange(provider.id, val)}
-                        disabled={!provider.enabled}
-                      >
-                        <SelectTrigger className="w-[280px] h-9 bg-white text-sm" data-testid={`select-model-${provider.id}`}>
-                          <SelectValue placeholder="Select model" />
-                        </SelectTrigger>
-                        <SelectContent className="bg-white border-neutral-200 shadow-lg">
-                          {(PROVIDER_MODELS[provider.id] || []).map((m) => (
-                            <SelectItem key={m.id} value={m.id}>
-                              <div className="flex items-center justify-between w-full gap-4">
-                                <span>{m.name}</span>
-                                <span className="text-xs text-neutral-400 font-mono">{m.cost}</span>
-                              </div>
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                      {provider.isCustom ? (
+                        <Input
+                          value={provider.model}
+                          onChange={(e) => handleModelChange(provider.id, e.target.value)}
+                          disabled={!provider.enabled}
+                          className="w-[280px] h-9 bg-white text-sm"
+                          placeholder="Model name (e.g., gpt-4)"
+                          data-testid={`input-model-${provider.id}`}
+                        />
+                      ) : (
+                        <Select 
+                          value={provider.model} 
+                          onValueChange={(val) => handleModelChange(provider.id, val)}
+                          disabled={!provider.enabled}
+                        >
+                          <SelectTrigger className="w-[280px] h-9 bg-white text-sm" data-testid={`select-model-${provider.id}`}>
+                            <SelectValue placeholder="Select model" />
+                          </SelectTrigger>
+                          <SelectContent className="bg-white border-neutral-200 shadow-lg">
+                            {(PROVIDER_MODELS[provider.id] || []).map((m) => (
+                              <SelectItem key={m.id} value={m.id}>
+                                <div className="flex items-center justify-between w-full gap-4">
+                                  <span>{m.name}</span>
+                                  <span className="text-xs text-neutral-400 font-mono">{m.cost}</span>
+                                </div>
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      )}
                     </div>
+                    {provider.isCustom && provider.baseUrl && (
+                      <div className="flex items-center gap-2 mt-2 text-xs text-neutral-400">
+                        <Link className="w-3 h-3" />
+                        <span className="truncate max-w-[250px]">{provider.baseUrl}</span>
+                      </div>
+                    )}
                   </div>
                 </div>
 
-                <div className="hidden sm:flex flex-col items-end gap-1 text-xs text-neutral-400 font-mono pt-1">
-                  <div className="flex items-center gap-1">
-                    <ShieldCheck className="w-3 h-3 text-neutral-300" />
-                    Replit AI
-                  </div>
+                <div className="hidden sm:flex flex-col items-end gap-2 text-xs text-neutral-400 font-mono pt-1">
+                  {provider.isCustom ? (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => handleDeleteProvider(provider.id)}
+                      className="text-red-500 hover:text-red-700 hover:bg-red-50 h-7 px-2"
+                      data-testid={`button-delete-${provider.id}`}
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </Button>
+                  ) : (
+                    <div className="flex items-center gap-1">
+                      <ShieldCheck className="w-3 h-3 text-neutral-300" />
+                      Replit AI
+                    </div>
+                  )}
                 </div>
               </div>
             ))}
+
+            <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
+              <DialogTrigger asChild>
+                <Button
+                  variant="outline"
+                  className="w-full border-dashed border-2 border-neutral-300 hover:border-indigo-400 hover:bg-indigo-50/50 text-neutral-600 hover:text-indigo-600"
+                  data-testid="button-add-provider"
+                >
+                  <Plus className="w-4 h-4 mr-2" />
+                  Add Custom Provider
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="sm:max-w-[425px]">
+                <DialogHeader>
+                  <DialogTitle>Add Custom Provider</DialogTitle>
+                  <DialogDescription>
+                    Connect any OpenAI-compatible API endpoint as a custom provider.
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="grid gap-4 py-4">
+                  <div className="grid gap-2">
+                    <Label htmlFor="provider-name">Provider Name</Label>
+                    <Input
+                      id="provider-name"
+                      placeholder="My Custom LLM"
+                      value={newProvider.name}
+                      onChange={(e) => setNewProvider({ ...newProvider, name: e.target.value })}
+                      data-testid="input-new-provider-name"
+                    />
+                  </div>
+                  <div className="grid gap-2">
+                    <Label htmlFor="provider-url">API Base URL</Label>
+                    <Input
+                      id="provider-url"
+                      placeholder="https://api.example.com/v1"
+                      value={newProvider.baseUrl}
+                      onChange={(e) => setNewProvider({ ...newProvider, baseUrl: e.target.value })}
+                      data-testid="input-new-provider-url"
+                    />
+                    <p className="text-xs text-neutral-500">The base URL for the OpenAI-compatible API</p>
+                  </div>
+                  <div className="grid gap-2">
+                    <Label htmlFor="provider-key">API Key (optional)</Label>
+                    <Input
+                      id="provider-key"
+                      type="password"
+                      placeholder="sk-..."
+                      value={newProvider.apiKey}
+                      onChange={(e) => setNewProvider({ ...newProvider, apiKey: e.target.value })}
+                      data-testid="input-new-provider-key"
+                    />
+                    <p className="text-xs text-neutral-500">Leave empty if not required</p>
+                  </div>
+                  <div className="grid gap-2">
+                    <Label htmlFor="provider-model">Model Name</Label>
+                    <Input
+                      id="provider-model"
+                      placeholder="gpt-4, llama-3, etc."
+                      value={newProvider.model}
+                      onChange={(e) => setNewProvider({ ...newProvider, model: e.target.value })}
+                      data-testid="input-new-provider-model"
+                    />
+                  </div>
+                </div>
+                <DialogFooter>
+                  <Button variant="outline" onClick={() => setIsAddDialogOpen(false)}>
+                    Cancel
+                  </Button>
+                  <Button onClick={handleAddProvider} data-testid="button-confirm-add-provider">
+                    Add Provider
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
             
             <div className="rounded-md bg-blue-50 p-4 border border-blue-100 flex gap-3">
               <Info className="w-5 h-5 text-blue-600 shrink-0 mt-0.5" />

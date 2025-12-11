@@ -101,79 +101,85 @@ export function Sidebar({ conversations, activeId, onSelect, onNew, onDelete, on
             <div 
               key={conv.id}
               className={cn(
-                "group rounded-md p-2 text-sm transition-all hover:bg-neutral-200/50 cursor-pointer border border-transparent",
+                "group rounded-md px-2 py-2.5 text-sm transition-all hover:bg-neutral-100 cursor-pointer border border-transparent",
                 activeId === conv.id ? "bg-white border-neutral-200 shadow-sm text-neutral-900 font-medium" : "text-neutral-600"
               )}
               onClick={() => editingId !== conv.id && onSelect(conv.id)}
               data-testid={`sidebar-conversation-${conv.id}`}
             >
-              <div className="flex items-center gap-3">
-                <MessageSquare className={cn(
-                  "w-4 h-4 shrink-0",
-                  activeId === conv.id ? "text-indigo-600" : "text-neutral-400"
-                )} />
-                <div className="flex flex-col flex-1 min-w-0">
-                  {editingId === conv.id ? (
-                    <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
-                      <Input
-                        value={editTitle}
-                        onChange={(e) => setEditTitle(e.target.value)}
-                        className="h-6 text-sm py-0 px-1"
-                        autoFocus
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') handleSaveEdit(e as any);
-                          if (e.key === 'Escape') handleCancelEdit(e as any);
-                        }}
-                        data-testid={`input-rename-${conv.id}`}
-                      />
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-5 w-5 text-green-600 hover:text-green-700 hover:bg-green-50"
-                        onClick={handleSaveEdit}
-                        data-testid={`button-save-rename-${conv.id}`}
-                      >
-                        <Check className="w-3 h-3" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-5 w-5 text-neutral-500 hover:text-neutral-700"
-                        onClick={handleCancelEdit}
-                        data-testid={`button-cancel-rename-${conv.id}`}
-                      >
-                        <X className="w-3 h-3" />
-                      </Button>
-                    </div>
-                  ) : (
-                    <>
-                      <span className="truncate">{conv.title}</span>
-                      <span className="text-[10px] text-neutral-400 font-normal truncate">
-                        {formatDistanceToNow(new Date(conv.updatedAt), { addSuffix: true })}
-                      </span>
-                    </>
-                  )}
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2.5 flex-1 min-w-0">
+                  <MessageSquare className={cn(
+                    "w-4 h-4 shrink-0",
+                    activeId === conv.id ? "text-indigo-600" : "text-neutral-400"
+                  )} />
+                  <div className="flex flex-col flex-1 min-w-0">
+                    {editingId === conv.id ? (
+                      <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                        <Input
+                          value={editTitle}
+                          onChange={(e) => setEditTitle(e.target.value)}
+                          className="h-6 text-sm py-0 px-1"
+                          autoFocus
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') handleSaveEdit(e as any);
+                            if (e.key === 'Escape') handleCancelEdit(e as any);
+                          }}
+                          data-testid={`input-rename-${conv.id}`}
+                        />
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-5 w-5 text-green-600 hover:text-green-700 hover:bg-green-50"
+                          onClick={handleSaveEdit}
+                          data-testid={`button-save-rename-${conv.id}`}
+                        >
+                          <Check className="w-3 h-3" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-5 w-5 text-neutral-500 hover:text-neutral-700"
+                          onClick={handleCancelEdit}
+                          data-testid={`button-cancel-rename-${conv.id}`}
+                        >
+                          <X className="w-3 h-3" />
+                        </Button>
+                      </div>
+                    ) : (
+                      <>
+                        <span className="truncate">{conv.title}</span>
+                        <span className="text-[10px] text-neutral-400 font-normal truncate">
+                          {formatDistanceToNow(new Date(conv.updatedAt), { addSuffix: true })}
+                        </span>
+                      </>
+                    )}
+                  </div>
                 </div>
-              </div>
-              <div className="flex items-center gap-2 mt-2 pl-7">
-                <button
-                  type="button"
-                  className="h-7 px-3 rounded bg-blue-600 text-white text-xs font-medium hover:bg-blue-700 flex items-center gap-1"
-                  onClick={(e) => handleEditClick(e, conv)}
-                  data-testid={`button-edit-${conv.id}`}
-                >
-                  <Pencil className="w-3 h-3" />
-                  Edit
-                </button>
-                <button
-                  type="button"
-                  className="h-7 px-3 rounded bg-red-600 text-white text-xs font-medium hover:bg-red-700 flex items-center gap-1"
-                  onClick={(e) => handleDeleteClick(e, conv.id)}
-                  data-testid={`button-delete-${conv.id}`}
-                >
-                  <Trash2 className="w-3 h-3" />
-                  Delete
-                </button>
+                {editingId !== conv.id && (
+                  <div className="flex items-center gap-0.5 shrink-0">
+                    <button
+                      type="button"
+                      className="h-6 w-6 rounded flex items-center justify-center text-neutral-400 hover:text-indigo-600 hover:bg-indigo-50 transition-colors"
+                      onClick={(e) => handleEditClick(e, conv)}
+                      data-testid={`button-edit-${conv.id}`}
+                      title="Edit conversation"
+                      aria-label="Edit conversation"
+                    >
+                      <Pencil className="w-3 h-3" />
+                    </button>
+                    <button
+                      type="button"
+                      className="h-6 w-6 rounded flex items-center justify-center text-neutral-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+                      onClick={(e) => handleDeleteClick(e, conv.id)}
+                      data-testid={`button-delete-${conv.id}`}
+                      title="Delete conversation"
+                      aria-label="Delete conversation"
+                    >
+                      <Trash2 className="w-3 h-3" />
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
           ))}

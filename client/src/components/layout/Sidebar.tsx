@@ -94,8 +94,8 @@ export function Sidebar({ conversations, activeId, onSelect, onNew, onDelete, on
 
       <ScrollArea className="flex-1 px-3">
         <div className="flex flex-col gap-1 pb-4">
-          <div className="text-xs font-semibold uppercase tracking-wider px-3 mb-2 mt-2 bg-yellow-300 text-black py-2">
-            MY CONVERSATIONS - UPDATED CODE
+          <div className="text-xs font-semibold text-neutral-400 uppercase tracking-wider px-3 mb-2 mt-2">
+            Recent
           </div>
           {filtered.map((conv) => (
             <div 
